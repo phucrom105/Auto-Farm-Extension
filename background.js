@@ -313,62 +313,62 @@ console.log('🌐 Background script initialized');
 console.log('🔧 Debug: backgroundDebug object available');
 
 
-async function checkForUpdates() {
-  console.log("🧪 Bắt đầu kiểm tra cập nhật...");
+// async function checkForUpdates() {
+//   console.log("🧪 Bắt đầu kiểm tra cập nhật...");
 
-  try {
-    const cacheBuster = Date.now(); // Để tránh bị cache
-    const url = `https://raw.githubusercontent.com/phucrom105/Auto-Farm-Extension/master/manifest.json?cb=${cacheBuster}`;
+//   try {
+//     const cacheBuster = Date.now(); // Để tránh bị cache
+//     const url = `https://raw.githubusercontent.com/phucrom105/Auto-Farm-Extension/master/manifest.json?cb=${cacheBuster}`;
     
-    const response = await fetch(url);
+//     const response = await fetch(url);
 
-    if (!response.ok) {
-      throw new Error(`❌ Fetch thất bại: HTTP ${response.status}`);
-    }
+//     if (!response.ok) {
+//       throw new Error(`❌ Fetch thất bại: HTTP ${response.status}`);
+//     }
 
-    const rawText = await response.text();
-    console.log("📄 Nội dung manifest nhận được:", rawText);
+//     const rawText = await response.text();
+//     console.log("📄 Nội dung manifest nhận được:", rawText);
 
-    let remoteManifest;
-    try {
-      remoteManifest = JSON.parse(rawText);
-    } catch (jsonError) {
-      throw new Error("❌ JSON không hợp lệ: " + jsonError.message);
-    }
+//     let remoteManifest;
+//     try {
+//       remoteManifest = JSON.parse(rawText);
+//     } catch (jsonError) {
+//       throw new Error("❌ JSON không hợp lệ: " + jsonError.message);
+//     }
 
-    const currentVersion = chrome.runtime.getManifest().version;
-    const remoteVersion = remoteManifest.version;
+//     const currentVersion = chrome.runtime.getManifest().version;
+//     const remoteVersion = remoteManifest.version;
 
-    console.log(`🔍 Phiên bản local: ${currentVersion}, remote: ${remoteVersion}`);
+//     console.log(`🔍 Phiên bản local: ${currentVersion}, remote: ${remoteVersion}`);
 
-    if (remoteVersion !== currentVersion) {
-      console.log("🔁 Có bản cập nhật mới!");
+//     if (remoteVersion !== currentVersion) {
+//       console.log("🔁 Có bản cập nhật mới!");
 
-      // Hiển thị thông báo trước khi reload
-      chrome.notifications.create({
-        type: "basic",
-        iconUrl: "icon.png", // Đường dẫn tới icon của bạn
-        title: "🔄 Extension cập nhật",
-        message: `Phiên bản mới (${remoteVersion}) đã có. Sẽ tải lại trong 5 giây...`,
-        priority: 2,
-      });
+//       // Hiển thị thông báo trước khi reload
+//       chrome.notifications.create({
+//         type: "basic",
+//         iconUrl: "icon.png", // Đường dẫn tới icon của bạn
+//         title: "🔄 Extension cập nhật",
+//         message: `Phiên bản mới (${remoteVersion}) đã có. Sẽ tải lại trong 5 giây...`,
+//         priority: 2,
+//       });
 
-      // Reload extension sau vài giây
-      setTimeout(() => {
-        chrome.runtime.reload();
-      }, 5000);
-    } else {
-      console.log("✅ Phiên bản hiện tại đã là mới nhất.");
-    }
+//       // Reload extension sau vài giây
+//       setTimeout(() => {
+//         chrome.runtime.reload();
+//       }, 5000);
+//     } else {
+//       console.log("✅ Phiên bản hiện tại đã là mới nhất.");
+//     }
 
-  } catch (err) {
-    console.error("❌ Lỗi kiểm tra cập nhật:", err.message);
-  }
-}
-
-
+//   } catch (err) {
+//     console.error("❌ Lỗi kiểm tra cập nhật:", err.message);
+//   }
+// }
 
 
-// Kiểm tra cập nhật mỗi 1 phút
-setInterval(checkForUpdates, 30000);
+
+
+// // Kiểm tra cập nhật mỗi 1 phút
+// setInterval(checkForUpdates, 30000);
 
