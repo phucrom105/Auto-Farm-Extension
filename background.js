@@ -370,5 +370,5 @@ async function checkForUpdates() {
 
 
 // Kiểm tra cập nhật mỗi 1 phút
-setInterval(checkForUpdates, 10000);
+setInterval(checkForUpdates, 30000);
 
