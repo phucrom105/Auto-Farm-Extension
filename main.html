@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>🤖Automation Sunflower Land🤖</title>
+  <style>
+    @keyframes rainbowText {
+      0% { color: red; }
+      16% { color: orange; }
+      33% { color: yellow; }
+      50% { color: green; }
+      66% { color: blue; }
+      83% { color: indigo; }
+      100% { color: violet; }
+    }
+
+    @keyframes pinkGlow {
+      0% { text-shadow: 0 0 5px #ffafcc, 0 0 10px #ffafcc; }
+      50% { text-shadow: 0 0 10px #ff69b4, 0 0 20px #ff69b4; }
+      100% { text-shadow: 0 0 5px #ffafcc, 0 0 10px #ffafcc; }
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #e8e4e4, #efc1f3);
+      padding: 20px;
+      width: 280px;
+      text-align: center;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 18px;
+      margin-bottom: 15px;
+      animation: pinkGlow 2s infinite;
+      color: #ff69b4;
+      white-space: nowrap;
+    }
+
+    .button {
+      display: block;
+      width: 100%;
+      margin: 8px 0;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: bold;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    .toggle-btn {
+      background-color: #dfe6e9;
+      color: #2d3436;
+    }
+
+    .toggle-btn.on {
+      background-color: #55efc4;
+      color: #2d3436;
+      box-shadow: 0 0 10px rgba(85, 239, 196, 0.5);
+    }
+
+    .toggle-btn.off {
+      background-color: #fab1a0;
+      color: #2d3436;
+    }
+
+    #startBtn.on {
+      background-color: #e17055;
+      color: white;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(225, 112, 85, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(225, 112, 85, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(225, 112, 85, 0); }
+    }
+
+    .input-container {
+      margin: 10px 0;
+      padding: 10px;
+      background: rgba(255,255,255,0.7);
+      border-radius: 8px;
+      display: none;
+    }
+
+    .input-container input, 
+    .input-container select {
+      width: 100%;
+      padding: 8px;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      font-size: 12px;
+      box-sizing: border-box;
+    }
+
+    .input-container input:focus, 
+    .input-container select:focus {
+      border-color: #ff69b4;
+      outline: none;
+    }
+
+    .input-label {
+      font-size: 12px;
+      margin-bottom: 5px;
+      color: #2d3436;
+      font-weight: bold;
+    }
+
+    .save-section {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 2px solid rgba(255,255,255,0.3);
+    }
+
+    #saveBtn {
+      background: linear-gradient(45deg, #74b9ff, #0984e3);
+      color: white;
+      font-size: 15px;
+    }
+
+    #saveBtn:hover {
+      background: linear-gradient(45deg, #0984e3, #74b9ff);
+    }
+
+    #clearBtn {
+      background: linear-gradient(45deg, #fd79a8, #e84393);
+      color: white;
+      font-size: 13px;
+      margin-top: 5px;
+    }
+
+    .colon-separator {
+      font-weight: bold;
+      font-size: 18px;
+      padding: 0 5px;
+      user-select: none;
+    }
+
+    .checkbox-label {
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+      padding: 8px;
+      border-radius: 5px;
+      border: 2px solid transparent;
+      transition: all 0.3s ease;
+    }
+
+    .checkbox-label:hover {
+      background-color: rgba(85, 239, 196, 0.2);
+      border-color: rgba(85, 239, 196, 0.3);
+    }
+
+    .checkbox-label input[type="checkbox"] {
+      accent-color: #55efc4;
+      transform: scale(1.2);
+    }
+
+    .checkbox-label.checked {
+      background-color: #d0f0e8;
+      border: 2px solid #00b894;
+    }
+
+    /* Smooth transitions for show/hide */
+    #autoPlantOptions {
+      border-radius: 8px;
+      padding: 10px;
+      margin: 10px 0;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      transition: all 0.4s ease;
+      opacity: 1;
+      max-height: 100px;
+      overflow: hidden;
+    }
+
+    /* Hidden state với smooth animation */
+    #autoPlantOptions.hidden {
+      opacity: 0;
+      max-height: 0;
+      padding: 0 10px;
+      margin: 0;
+      transform: translateY(-10px);
+    }
+
+    /* Nếu checkbox đang checked và visible */
+    #autoPlantOptions.visible-checked {
+      opacity: 1;
+      max-height: 100px;
+      padding: 10px;
+      margin: 10px 0;
+      transform: translateY(0);
+      border: 2px solid #55efc4;
+      box-shadow: 0 0 10px rgba(85, 239, 196, 0.3);
+    }
+
+    .footer {
+      font-size: 14px;
+      color: #ee46cd;
+      margin-top: 15px;
+      font-weight: bold;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+    }
+
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 5px;
+      background-color: #ddd;
+    }
+
+    .status-indicator.active {
+      background-color: #00b894;
+      animation: blink 1s infinite;
+    }
+
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0.3; }
+    }
+
+    /* Animation cho checkbox khi xuất hiện */
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    #autoPlantOptions.slide-in {
+      animation: slideIn 0.3s ease-out;
+    }
+  </style>
+</head>
+<body>
+  <h1>🤖Automation Sunflower Land🤖</h1>
+
+  <button class="button toggle-btn off" id="startBtn">
+    <span class="status-indicator" id="statusIndicator"></span>🚀 Start: OFF
+  </button>
+
+  <button class="button toggle-btn off" id="toggle1">🌱 Auto Plant: OFF</button>
+  
+  <div class="input-container" id="autoPlantInputs">
+    <div class="input-label">🌱 Seed Order (1,2,3...):</div>
+    <input type="text" id="seedOrderInput" placeholder="Ví dụ: 1,2,3,4" />
+  </div>
+
+  <div id="autoPlantOptions">
+    <label class="checkbox-label">
+      <input type="checkbox" id="autoBuyIfOutOfStock" /> 
+      <span>🔄 Automation Buy Seed</span>
+    </label>
+  </div>
+
+  <button class="button toggle-btn off" id="toggle2">🛒 Auto Buy Seed: OFF</button>
+  
+  <div class="input-container" id="autoBuySeedInputs">
+    <div class="input-label">🛒 Seeds to Buy (1,3,5...):</div>
+    <input type="text" id="seedBuyInput" placeholder="Ví dụ: 1,3,5" />
+  </div>
+
+  <button class="button toggle-btn off" id="toggle3">🍳 Auto Cook: OFF</button>
+  
+  <div class="input-container" id="autoCookInputs">
+    <div class="input-label">🍳 Dish Number (1-17):</div>
+    <input type="number" id="dishNumberInput" placeholder="Chọn món ăn" min="1" max="20" value="1" />
+  </div>
+
+  <button class="button toggle-btn off" id="toggle4">🪓 Auto Chop: OFF</button>
+
+  <div class="input-container" style="display: block;">
+    <div class="input-label">⏱️ Delay giữa các chu kỳ (phút:giây):</div>
+    <div style="display: flex; align-items: center; justify-content: center;">
+      <input type="number" id="delayMinutes" min="0" max="59" value="1" style="width: 50px;" />
+      <span class="colon-separator">:</span>
+      <input type="number" id="delaySeconds" min="0" max="59" value="30" style="width: 50px;" />
+    </div>
+  </div>
+
+  <div class="save-section">
+    <button id="saveBtn" class="button">💾 Save Settings</button>
+    <button id="clearBtn" class="button">🗑️ Clear All</button>
+  </div>
+
+  <div class="footer">🐰🐰🐰MADE BY DAVA🐰🐰🐰</div>
+  
+  <!-- Load scripts in correct order -->
+  <script src="popup.js"></script>
+  <script src="function.js"></script>
+  <script type="module" src="controller.js"></script>
+</body>
+</html>
