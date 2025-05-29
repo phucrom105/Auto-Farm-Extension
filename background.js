@@ -317,7 +317,9 @@ async function checkForUpdates() {
   console.log("🧪 Bắt đầu kiểm tra cập nhật...");
 
   try {
-    const url = "https://raw.githubusercontent.com/phucrom105/Auto-Farm-Extension/master/manifest.json";
+    const cacheBuster = Date.now(); // Để tránh bị cache
+    const url = `https://raw.githubusercontent.com/phucrom105/Auto-Farm-Extension/master/manifest.json?cb=${cacheBuster}`;
+    
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -325,7 +327,7 @@ async function checkForUpdates() {
     }
 
     const rawText = await response.text();
-    console.log("📄 Nội dung nhận được:", rawText); // 👈 Xem nội dung thực tế
+    console.log("📄 Nội dung manifest nhận được:", rawText);
 
     let remoteManifest;
     try {
@@ -341,15 +343,29 @@ async function checkForUpdates() {
 
     if (remoteVersion !== currentVersion) {
       console.log("🔁 Có bản cập nhật mới!");
-      chrome.runtime.reload();
+
+      // Hiển thị thông báo trước khi reload
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: "icon.png", // Đường dẫn tới icon của bạn
+        title: "🔄 Extension cập nhật",
+        message: `Phiên bản mới (${remoteVersion}) đã có. Sẽ tải lại trong 5 giây...`,
+        priority: 2,
+      });
+
+      // Reload extension sau vài giây
+      setTimeout(() => {
+        chrome.runtime.reload();
+      }, 5000);
     } else {
       console.log("✅ Phiên bản hiện tại đã là mới nhất.");
     }
 
   } catch (err) {
-    console.error("❌ Không thể kiểm tra cập nhật:", err.message);
+    console.error("❌ Lỗi kiểm tra cập nhật:", err.message);
   }
 }
+
 
 
 
