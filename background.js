@@ -314,24 +314,45 @@ console.log('🔧 Debug: backgroundDebug object available');
 
 
 async function checkForUpdates() {
+  console.log("🧪 Bắt đầu kiểm tra cập nhật...");
+
   try {
-    const response = await fetch('https://raw.githubusercontent.com/phucrom105/Auto-Farm-Extension/main/manifest.json');
-    const remoteManifest = await response.json();
+    const url = "https://raw.githubusercontent.com/phucrom105/Auto-Farm-Extension/master/manifest.json";
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`❌ Fetch thất bại: HTTP ${response.status}`);
+    }
+
+    const rawText = await response.text();
+    console.log("📄 Nội dung nhận được:", rawText); // 👈 Xem nội dung thực tế
+
+    let remoteManifest;
+    try {
+      remoteManifest = JSON.parse(rawText);
+    } catch (jsonError) {
+      throw new Error("❌ JSON không hợp lệ: " + jsonError.message);
+    }
 
     const currentVersion = chrome.runtime.getManifest().version;
     const remoteVersion = remoteManifest.version;
 
-    console.log(`🔍 Checking version: current = ${currentVersion}, remote = ${remoteVersion}`);
-    
+    console.log(`🔍 Phiên bản local: ${currentVersion}, remote: ${remoteVersion}`);
+
     if (remoteVersion !== currentVersion) {
-      console.log("🔁 Đã phát hiện phiên bản mới. Cần cập nhật thủ công.");
-      // 👉 Chrome Extension từ Web Store thì sẽ auto update
-      // 👉 Extension cài từ local (dev) phải reload thủ công
+      console.log("🔁 Có bản cập nhật mới!");
+      chrome.runtime.reload();
+    } else {
+      console.log("✅ Phiên bản hiện tại đã là mới nhất.");
     }
-  } catch (error) {
-    console.log('❌ Không thể kiểm tra cập nhật:', error);
+
+  } catch (err) {
+    console.error("❌ Không thể kiểm tra cập nhật:", err.message);
   }
 }
 
-// Kiểm tra cập nhật mỗi 30 phút
-setInterval(checkForUpdates, 1 * 60 * 1000);
+
+
+// Kiểm tra cập nhật mỗi 1 phút
+setInterval(checkForUpdates, 10000);
+
