@@ -370,5 +370,5 @@ console.log('🔧 Debug: backgroundDebug object available');
 
 
 // // Kiểm tra cập nhật mỗi 1 phút
-// setInterval(checkForUpdates, 30000);
+// setInterval(checkForUpdates, 30 * 60 * 1000);
 

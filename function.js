@@ -188,13 +188,17 @@ async function selectSeed(seedOrder) {
     if (stockValue <= 0) {
       console.log(`❌ Hết hạt giống số ${seedIndex}`);
 
+      // Lấy automationSettings từ storage local thay vì gọi background
       const { automationSettings } = await chrome.storage.local.get("automationSettings");
       if (automationSettings?.autoBuyIfOutOfStock) {
         console.log(`🛒 Đang thử mua lại seed ${seedIndex}...`);
-        await chrome.runtime.sendMessage({ action: "buySeed", data: [seedIndex] });
+        
+        // GỌI TRỰC TIẾP HÀM handleBuySeed thay vì qua background
+        await handleBuySeed([seedIndex]);
 
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await new Promise((resolve) => setTimeout(resolve, 2000)); // Tăng thời gian chờ
 
+        // Refresh lại danh sách seed elements sau khi mua
         const updatedSeedElements = document.querySelectorAll(
           ".fixed.inset-0.overflow-y-auto .flex.flex-wrap.mb-2 > .relative"
         );
@@ -215,14 +219,16 @@ async function selectSeed(seedOrder) {
           console.log(`🚫 Đã thử mua nhưng seed ${seedIndex} vẫn hết hàng. Chuyển sang seed khác...`);
           continue;
         } else {
-          console.log(`✅ Mua thành công seed ${seedIndex}, chọn lại...`);
+          console.log(`✅ Mua thành công seed ${seedIndex}, stock hiện tại: ${updatedStockValue}`);
 
+          // Chọn seed sau khi mua thành công
           const cropImage = updatedSeedElement.querySelector("img[src*='crop.png']");
           if (cropImage) {
             cropImage.click();
             console.log(`🌱 Đã chọn lại seed ${seedIndex} sau khi mua`);
           }
 
+          // Đóng market
           setTimeout(() => {
             const closeButton = document.querySelector(
               "img[src='https://sunflower-land.com/game-assets/icons/close.png']"
@@ -250,7 +256,7 @@ async function selectSeed(seedOrder) {
     }
 
     cropImage.click();
-    console.log(`✅ Đã chọn hạt giống số ${seedIndex}`);
+    console.log(`✅ Đã chọn hạt giống số ${seedIndex} (stock: ${stockValue})`);
 
     setTimeout(() => {
       const closeButton = document.querySelector(
