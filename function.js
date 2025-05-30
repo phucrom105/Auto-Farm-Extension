@@ -582,8 +582,6 @@ async function handleBuySeed(seedBuy) {
       // Chờ thêm để đảm bảo Market đã load
       await new Promise(r => setTimeout(r, 1000));
 
-      // Tìm trực tiếp div.relative chứa ảnh rìu
-      console.log("🔍 Tìm div.relative chứa ảnh rìu...");
       
       const axeContainers = Array.from(document.querySelectorAll("div.relative"))
         .filter(div => {
@@ -603,7 +601,6 @@ async function handleBuySeed(seedBuy) {
             const style = window.getComputedStyle(div);
             const width = parseFloat(style.width);
             const height = parseFloat(style.height);
-            console.log(`✅ Tìm thấy div.relative chứa rìu: ${width.toFixed(2)}x${height.toFixed(2)}, src: ${imgSrc}`);
             return true;
           }
           
@@ -619,7 +616,6 @@ async function handleBuySeed(seedBuy) {
       const axeContainer = axeContainers[0];
       const axeImg = axeContainer.querySelector("img[src*='axe']");
       
-      console.log("✅ Đã tìm thấy container chứa rìu, bắt đầu tìm số lượng...");
 
       // Tìm số lượng trong chính container này
       const axeCount = await getNumberFromAxeContainer(axeContainer, axeImg);
@@ -645,7 +641,6 @@ async function handleBuySeed(seedBuy) {
   // Hàm lấy số lượng từ container chứa rìu - tối ưu hóa chỉ tìm trong div.relative đó
   async function getNumberFromAxeContainer(axeContainer, axeImg) {
     try {
-      console.log("🔍 Đang tìm số lượng trong div.relative chứa rìu...");
       
       // Log thông tin container để debug
       const containerInfo = {
@@ -656,7 +651,6 @@ async function handleBuySeed(seedBuy) {
       console.log("📦 Container info:", containerInfo);
 
       // Phương pháp 1: Tìm số trong direct children (con trực tiếp của div.relative)
-      console.log("🔍 Tìm số trong direct children...");
       const directNumbers = Array.from(axeContainer.children)
         .filter(child => {
           // Loại trừ element ảnh
@@ -691,12 +685,11 @@ async function handleBuySeed(seedBuy) {
         
         // Nếu có nhiều số, chọn số nhỏ nhất (thường là số lượng item)
         const result = Math.min(...directNumbers.map(item => item.value));
-        console.log(`✅ Nhiều số trong direct children, chọn nhỏ nhất: ${result}`);
         return result;
       }
 
       // Phương pháp 2: Tìm trong tất cả text nodes bên trong container (không phải IMG)
-      console.log("🔍 Tìm số trong tất cả text nodes...");
+
       const allTextNodes = [];
       
       function collectTextNodes(node) {
