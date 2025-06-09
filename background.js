@@ -11,17 +11,152 @@ let timePlanting = 10;
 let timeCooking = 6;
 let timeChopping = 8;
 
+
+// ===== NEW: Anti-suspension mechanisms =====
+let lastPingTime = 0;
+let suspensionDetected = false;
+let tabKeepAliveInterval = null;
+let contentScriptInjected = false;
+
+
 // State backup để khôi phục khi gặp lỗi
 let stateBackup = {
   isRunning: false,
   toggleStates: {},
   automationSettings: {},
+
   targetTabId: null,
   targetTabUrl: null
 };
 
 // Cờ flag để tránh restore backup ngay sau khi clear
 let justCleared = false;
+
+
+
+// ===== NEW: Tab Keep-Alive System =====
+async function startTabKeepAlive() {
+  if (tabKeepAliveInterval) {
+    clearInterval(tabKeepAliveInterval);
+  }
+  
+  tabKeepAliveInterval = setInterval(async () => {
+    if (targetTabId && isRunning) {
+      try {
+        // Method 1: Ping để duy trì connection
+        await chrome.tabs.sendMessage(targetTabId, { 
+          action: 'KEEP_ALIVE',
+          timestamp: Date.now()
+        });
+        
+        // Method 2: Inject CSS để tạo hoạt động nhẹ
+        await chrome.scripting.insertCSS({
+          target: { tabId: targetTabId },
+          css: `body::after { content: "${Date.now()}"; position: absolute; left: -9999px; }`
+        });
+        
+        console.log('💓 Tab keep-alive ping successful');
+        suspensionDetected = false;
+        
+      } catch (error) {
+        console.log('⚠️ Keep-alive failed, tab may be suspended:', error.message);
+        suspensionDetected = true;
+        await handleTabSuspension();
+      }
+    }
+  }, 30000); // Ping mỗi 30 giây
+}
+
+async function stopTabKeepAlive() {
+  if (tabKeepAliveInterval) {
+    clearInterval(tabKeepAliveInterval);
+    tabKeepAliveInterval = null;
+  }
+}
+
+// ===== NEW: Handle tab suspension =====
+async function handleTabSuspension() {
+  console.log('🛡️ Handling tab suspension...');
+  
+  try {
+    // Method 1: Focus tab briefly để "đánh thức"
+    await chrome.tabs.update(targetTabId, { active: true });
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Method 2: Reload content script
+    await injectContentScript();
+    
+    // Method 3: Test connection sau khi thức
+    await chrome.tabs.sendMessage(targetTabId, { 
+      action: 'WAKE_UP_TEST',
+      timestamp: Date.now()
+    });
+    
+    console.log('✅ Tab awakened successfully');
+    suspensionDetected = false;
+    
+  } catch (error) {
+    console.log('❌ Failed to awaken tab:', error.message);
+    
+    // Fallback: Tìm tab mới
+    const found = await findMatchingTab();
+    if (!found) {
+      console.log('⚠️ No replacement tab found, automation paused');
+    }
+  }
+}
+
+
+// ===== NEW: Enhanced content script injection =====
+async function injectContentScript() {
+  if (!targetTabId) return false;
+  
+  try {
+    // Kiểm tra xem content script đã được inject chưa
+    const testResult = await chrome.tabs.sendMessage(targetTabId, { 
+      action: 'CONTENT_SCRIPT_TEST' 
+    });
+    
+    if (testResult?.contentScriptReady) {
+      console.log('✅ Content script already active');
+      return true;
+    }
+    
+  } catch (error) {
+    console.log('🔄 Content script not responding, re-injecting...');
+  }
+  
+  try {
+    // Re-inject content script
+    await chrome.scripting.executeScript({
+      target: { tabId: targetTabId },
+      files: ['content.js']
+    });
+    
+    // Đợi một chút để script khởi tạo
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Test lại
+    const testResult = await chrome.tabs.sendMessage(targetTabId, { 
+      action: 'CONTENT_SCRIPT_TEST' 
+    });
+    
+    if (testResult?.contentScriptReady) {
+      console.log('✅ Content script re-injected successfully');
+      contentScriptInjected = true;
+      return true;
+    } else {
+      throw new Error('Content script not responding after injection');
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to inject content script:', error);
+    contentScriptInjected = false;
+    return false;
+  }
+}
+
+
 
 // Khởi tạo khi extension start
 chrome.runtime.onStartup.addListener(async () => {
@@ -126,7 +261,7 @@ async function restoreFromBackup(reason = 'unknown') {
     isRunning = stateBackup.isRunning;
     toggleStates = { ...stateBackup.toggleStates };
     automationSettings = { ...stateBackup.automationSettings };
-    
+
     if (!targetTabId && stateBackup.targetTabId) {
       targetTabId = stateBackup.targetTabId;
       targetTabUrl = stateBackup.targetTabUrl;
@@ -167,11 +302,13 @@ async function loadSavedState() {
     
     console.log('📋 Raw loaded data:', result);
     
+    
     isRunning = result.isRunning || false;
     automationSettings = result.automationSettings || {};
     targetTabId = result.targetTabId || null;
     targetTabUrl = result.targetTabUrl || null;
     
+
     toggleStates = {
       toggle1: result.toggle1 || false,
       toggle2: result.toggle2 || false, 
@@ -186,6 +323,7 @@ async function loadSavedState() {
       targetTabId,
       targetTabUrl 
     });
+    
     
     if (result.startButtonOn !== isRunning) {
       await chrome.storage.local.set({ startButtonOn: isRunning });
@@ -207,7 +345,6 @@ async function loadSavedState() {
   }
 }
 
-// ===== KEY FIX: Enhanced tab validation và connection =====
 async function validateTargetTab() {
   if (!targetTabId) return false;
   
@@ -230,16 +367,53 @@ async function validateTargetTab() {
       }
     }
     
-    // Test connection bằng cách ping (KHÔNG fail nếu không response)
+    // ===== NEW: Enhanced connection test với suspension handling =====
     try {
-      await Promise.race([
-        chrome.tabs.sendMessage(targetTabId, { action: 'PING' }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('ping_timeout')), 3000))
+      const pingStart = Date.now();
+      const pingResult = await Promise.race([
+        chrome.tabs.sendMessage(targetTabId, { 
+          action: 'PING',
+          timestamp: pingStart
+        }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('ping_timeout')), 5000)
+        )
       ]);
-      console.log('✅ Target tab connection confirmed');
+      
+      const pingTime = Date.now() - pingStart;
+      console.log(`✅ Target tab ping successful (${pingTime}ms)`);
+      
+      // Reset suspension flag nếu ping thành công
+      if (suspensionDetected) {
+        suspensionDetected = false;
+        console.log('🔄 Tab recovered from suspension');
+      }
+      
+      lastPingTime = Date.now();
+      
     } catch (pingError) {
-      console.log('⚠️ Target tab ping failed (tab may be inactive, continuing anyway)');
-      // KHÔNG return false, vì tab có thể chỉ đang inactive
+      console.log('⚠️ Target tab ping failed:', pingError.message);
+      
+      // Nếu ping fail, có thể tab bị suspend
+      if (pingError.message.includes('timeout') || 
+          pingError.message.includes('Could not establish connection')) {
+        
+        console.log('🛡️ Suspected tab suspension, attempting recovery...');
+        suspensionDetected = true;
+        
+        // Thử recovery
+        await handleTabSuspension();
+        
+        // Test lại sau recovery
+        try {
+          await chrome.tabs.sendMessage(targetTabId, { action: 'PING' });
+          console.log('✅ Tab recovered after suspension handling');
+          return true;
+        } catch (recoveryError) {
+          console.log('❌ Tab recovery failed, searching for replacement...');
+          return await findMatchingTab();
+        }
+      }
     }
     
     return true;
@@ -325,7 +499,7 @@ async function saveCurrentState() {
 // ===== KEY FIX: Enhanced message sending với retry và fallback =====
 async function sendActionToTargetTab(action, data = {}) {
   let attempts = 0;
-  const maxAttempts = 3;
+  const maxAttempts = 5; // Tăng số lần thử
   
   while (attempts < maxAttempts) {
     try {
@@ -334,22 +508,60 @@ async function sendActionToTargetTab(action, data = {}) {
         throw new Error("No valid target tab found");
       }
       
+      // ===== NEW: Pre-send suspension check =====
+      if (suspensionDetected) {
+        console.log('🛡️ Suspension detected, attempting recovery before send...');
+        await handleTabSuspension();
+        
+        // Đợi một chút sau recovery
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
       console.log(`📤 Sending ${action} to tab ${targetTabId} (attempt ${attempts + 1})`);
       
-      // Gửi message với timeout
+      // Gửi message với timeout dài hơn
       const result = await Promise.race([
         chrome.tabs.sendMessage(targetTabId, { action, data }),
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Message timeout')), 15000)
+          setTimeout(() => reject(new Error('Message timeout')), 20000) // Tăng timeout
         )
       ]);
       
       console.log(`📥 Success: ${action}`, result);
+      
+      // Reset suspension flag khi thành công
+      if (suspensionDetected) {
+        suspensionDetected = false;
+        console.log('🔄 Tab recovered, suspension flag reset');
+      }
+      
       return result;
       
     } catch (error) {
       attempts++;
       console.error(`❌ Attempt ${attempts} failed for ${action}:`, error.message);
+      
+      // ===== NEW: Enhanced error handling for suspension =====
+      if (error.message.includes('Could not establish connection') || 
+          error.message.includes('timeout')) {
+        
+        console.log('🛡️ Connection error detected, treating as suspension...');
+        suspensionDetected = true;
+        
+        // Thử recovery intensive hơn
+        await handleTabSuspension();
+        
+        // Re-inject content script để chắc chắn
+        await injectContentScript();
+        
+        // Đợi lâu hơn cho tab recovery
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Reset attempt counter sau successful recovery
+        if (!suspensionDetected) {
+          attempts = Math.max(0, attempts - 2);
+        }
+      }
       
       if (attempts >= maxAttempts) {
         // Thử tìm tab mới trước khi give up
@@ -363,11 +575,13 @@ async function sendActionToTargetTab(action, data = {}) {
         }
       }
       
-      // Đợi trước khi retry
-      await new Promise(resolve => setTimeout(resolve, 2000 * attempts));
+      // Exponential backoff với max delay
+      const backoffDelay = Math.min(10000, 2000 * Math.pow(1.5, attempts - 1));
+      await new Promise(resolve => setTimeout(resolve, backoffDelay));
     }
   }
 }
+
 
 // ===== KEY FIX: Auto-detect và switch tab =====
 async function setTargetTabFromCurrent() {
@@ -434,6 +648,13 @@ async function startBackgroundFarming() {
     console.log('⚠️ Farming loop already running. Skipping...');
     return;
   }
+  
+  // Bắt đầu keep-alive system
+  await startTabKeepAlive();
+  
+  // Inject content script để đảm bảo
+  await injectContentScript();
+
   
   // KIỂM TRA lại trạng thái từ storage trước khi bắt đầu
   const currentState = await chrome.storage.local.get(['isRunning', 'targetTabId', 'targetTabUrl']);
@@ -792,6 +1013,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }
           }
           
+           // Inject content script
+          await injectContentScript();
+
+
           isRunning = true;
           await saveCurrentState();
           startBackgroundFarming();
@@ -804,10 +1029,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })();
       return true;
       
-    case 'STOP_AUTOMATION':
+     case 'STOP_AUTOMATION':
       (async () => {
-        isRunning = false;
-        await saveCurrentState();
+        await stopAutomation();
         sendResponse({ success: true });
       })();
       return true;
@@ -960,9 +1184,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // ===== KEY FIX: Enhanced keepAlive system =====
-chrome.alarms.create('keepAlive', { periodInMinutes: 0.3 });
-chrome.alarms.create('tabMonitor', { periodInMinutes: 1 });
-chrome.alarms.create('stateBackup', { periodInMinutes: 2 });
+chrome.alarms.create('keepAlive', { periodInMinutes: 0.25 }); // Tăng tần suất
+chrome.alarms.create('tabMonitor', { periodInMinutes: 0.5 }); // Monitor thường xuyên hơn
+chrome.alarms.create('stateBackup', { periodInMinutes: 1 });
+chrome.alarms.create('suspensionCheck', { periodInMinutes: 0.75 }); // NEW: Check suspension
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'keepAlive') {
@@ -983,7 +1208,81 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'stateBackup') {
     await createStateBackup();
   }
+  
+  // ===== NEW: Suspension check alarm =====
+  if (alarm.name === 'suspensionCheck') {
+    if (targetTabId && isRunning) {
+      const timeSinceLastPing = Date.now() - lastPingTime;
+      
+      if (timeSinceLastPing > 120000) { // 2 phút không ping
+        console.log('🛡️ Long ping gap detected, checking for suspension...');
+        
+        try {
+          await chrome.tabs.sendMessage(targetTabId, { 
+            action: 'SUSPENSION_CHECK',
+            timestamp: Date.now()
+          });
+          lastPingTime = Date.now();
+        } catch (error) {
+          console.log('🛡️ Suspension check failed:', error.message);
+          suspensionDetected = true;
+          await handleTabSuspension();
+        }
+      }
+    }
+  }
 });
+
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  // Khi tab được activate, reset suspension flag
+  if (activeInfo.tabId === targetTabId && suspensionDetected) {
+    console.log('🔄 Target tab activated, resetting suspension flag...');
+    suspensionDetected = false;
+    
+    // Re-inject content script để chắc chắn
+    await injectContentScript();
+  }
+});
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (tabId === targetTabId) {
+    if (changeInfo.status === 'complete') {
+      console.log('🔄 Target tab reloaded, re-validating and re-injecting...');
+      contentScriptInjected = false;
+      suspensionDetected = false;
+      await validateTargetTab();
+      await injectContentScript();
+    }
+    
+    // Reset suspension khi tab có hoạt động
+    if (changeInfo.url || changeInfo.status) {
+      suspensionDetected = false;
+    }
+  }
+  
+  // Auto-detect new game tabs
+  if (changeInfo.status === 'complete' && !targetTabId && isRunning) {
+    const url = tab.url?.toLowerCase() || '';
+    const gameKeywords = ['game', 'farm', 'play', 'sunwin', 'fishing'];
+    if (gameKeywords.some(keyword => url.includes(keyword))) {
+      console.log('🎮 Auto-detected new game tab:', tab.id);
+      targetTabId = tab.id;
+      targetTabUrl = tab.url;
+      await saveCurrentState();
+      await injectContentScript();
+    }
+  }
+});
+
+
+// Stop keep-alive khi dừng automation
+async function stopAutomation() {
+  isRunning = false;
+  isLoopRunning = false;
+  await stopTabKeepAlive();
+  await saveCurrentState();
+}
+
 
 // Window focus handling
 chrome.windows.onFocusChanged.addListener(async (windowId) => {
@@ -993,6 +1292,7 @@ chrome.windows.onFocusChanged.addListener(async (windowId) => {
     await createStateBackup();
   }
 });
+
 
 // Debug object
 globalThis.backgroundDebug = {
@@ -1005,6 +1305,24 @@ globalThis.backgroundDebug = {
     stateBackup,
     isLoopRunning
   }),
+  getSuspensionStatus: () => ({
+    suspensionDetected,
+    lastPingTime: new Date(lastPingTime),
+    timeSinceLastPing: Date.now() - lastPingTime,
+    contentScriptInjected,
+    keepAliveActive: !!tabKeepAliveInterval
+  }),
+  
+  forceSuspensionRecovery: () => handleTabSuspension(),
+  testTabConnection: () => validateTargetTab(),
+  reinjectContentScript: () => injectContentScript(),
+  
+  simulateSuspension: () => {
+    suspensionDetected = true;
+    console.log('🧪 Simulated suspension detected');
+  },
+
+
   forceStart: () => {
     isRunning = true;
     saveCurrentState();
