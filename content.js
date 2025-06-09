@@ -1,4 +1,11 @@
 // content.js - Enhanced content script for Sunflower Land automation
+
+// ===== NEW: Anti-suspension mechanisms =====
+let keepAliveInterval = null;
+let lastActivityTime = Date.now();
+let isTabActive = !document.hidden;
+
+
 console.log("🌻 Sunflower Land Automation Content Script đã được inject!");
 
 // Inject helper functions into page context
@@ -160,13 +167,157 @@ function injectConsoleCommands() {
   script.remove();
 }
 
+
+// ===== NEW: Tab activity simulator =====
+function startAntiSuspension() {
+  // Method 1: Tạo hoạt động DOM nhẹ
+  keepAliveInterval = setInterval(() => {
+    // Tạo một element ẩn với timestamp để tạo hoạt động DOM
+    const hiddenElement = document.createElement('div');
+    hiddenElement.style.position = 'absolute';
+    hiddenElement.style.left = '-9999px';
+    hiddenElement.style.opacity = '0';
+    hiddenElement.textContent = Date.now().toString();
+    document.body.appendChild(hiddenElement);
+    
+    // Xóa element sau 1 giây
+    setTimeout(() => {
+      if (hiddenElement.parentNode) {
+        hiddenElement.parentNode.removeChild(hiddenElement);
+      }
+    }, 1000);
+    
+    lastActivityTime = Date.now();
+    console.log('💓 Anti-suspension activity created');
+  }, 25000); // Mỗi 25 giây
+}
+
+function stopAntiSuspension() {
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+    keepAliveInterval = null;
+  }
+}
+
+// ===== NEW: Visibility change handler =====
+document.addEventListener('visibilitychange', () => {
+  isTabActive = !document.hidden;
+  
+  if (isTabActive) {
+    console.log('👁️ Tab became visible');
+    lastActivityTime = Date.now();
+    
+    // Gửi signal về background script
+    try {
+      chrome.runtime.sendMessage({
+        action: 'TAB_BECAME_VISIBLE',
+        timestamp: Date.now()
+      });
+    } catch (e) {
+      console.log('⚠️ Cannot notify background of visibility change');
+    }
+  } else {
+    console.log('🙈 Tab became hidden');
+  }
+});
+
+// ===== NEW: Page focus handlers =====
+window.addEventListener('focus', () => {
+  console.log('🎯 Page gained focus');
+  lastActivityTime = Date.now();
+  
+  try {
+    chrome.runtime.sendMessage({
+      action: 'TAB_FOCUSED',
+      timestamp: Date.now()
+    });
+  } catch (e) {
+    console.log('⚠️ Cannot notify background of focus change');
+  }
+});
+
+window.addEventListener('blur', () => {
+  console.log('😴 Page lost focus');
+});
+
+
+
+
 // Message listener from extension popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   (async () => {
     try {
       let result = false;
+      lastActivityTime = Date.now();
 
       switch (request.action) {
+
+        // ===== NEW: Anti-suspension messages =====
+        case 'KEEP_ALIVE':
+          console.log('💓 Keep-alive ping received');
+          sendResponse({ 
+            success: true, 
+            timestamp: Date.now(),
+            isTabActive,
+            lastActivityTime
+          });
+          break;
+          
+        case 'WAKE_UP_TEST':
+          console.log('⏰ Wake-up test received');
+          // Tạo hoạt động DOM để "đánh thức" tab
+          const wakeUpElement = document.createElement('div');
+          wakeUpElement.style.position = 'absolute';
+          wakeUpElement.style.left = '-9999px';
+          wakeUpElement.textContent = 'wake-up-' + Date.now();
+          document.body.appendChild(wakeUpElement);
+          setTimeout(() => {
+            if (wakeUpElement.parentNode) {
+              wakeUpElement.parentNode.removeChild(wakeUpElement);
+            }
+          }, 100);
+          
+          sendResponse({ 
+            success: true, 
+            awakened: true,
+            timestamp: Date.now()
+          });
+          break;
+          
+        case 'CONTENT_SCRIPT_TEST':
+          console.log('🧪 Content script test received');
+          sendResponse({ 
+            contentScriptReady: true, 
+            timestamp: Date.now(),
+            isTabActive,
+            lastActivityTime
+          });
+          break;
+          
+        case 'SUSPENSION_CHECK':
+          console.log('🛡️ Suspension check received');
+          
+          // Tạo hoạt động để chống suspension
+          const checkElement = document.createElement('div');
+          checkElement.style.position = 'absolute';
+          checkElement.style.left = '-9999px';
+          checkElement.textContent = 'suspension-check-' + Date.now();
+          document.body.appendChild(checkElement);
+          setTimeout(() => {
+            if (checkElement.parentNode) {
+              checkElement.parentNode.removeChild(checkElement);
+            }
+          }, 100);
+          
+          sendResponse({ 
+            success: true, 
+            notSuspended: true,
+            timestamp: Date.now(),
+            isTabActive,
+            timeSinceLastActivity: Date.now() - lastActivityTime
+          });
+          break;
+
         case "plant":
           result = await handlePlantingPhase(request.data);
           break;
@@ -205,6 +356,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 function initializeContentScript() {
   console.log("🚀 Initializing Sunflower Land automation...");
   
+   // Start anti-suspension mechanisms
+  startAntiSuspension();
+  
+   // Notify background script that content script is ready
+  try {
+    chrome.runtime.sendMessage({
+      action: 'CONTENT_SCRIPT_READY',
+      timestamp: Date.now(),
+      url: window.location.href
+    });
+  } catch (e) {
+    console.log('⚠️ Cannot notify background script of initialization');
+  }
+  
+  // Setup periodic heartbeat
+  setInterval(() => {
+    if (Date.now() - lastActivityTime > 60000) { // 1 phút không hoạt động
+      console.log('💓 Sending periodic heartbeat');
+      try {
+        chrome.runtime.sendMessage({
+          action: 'CONTENT_HEARTBEAT',
+          timestamp: Date.now(),
+          isTabActive
+        });
+      } catch (e) {
+        console.log('⚠️ Heartbeat failed');
+      }
+    }
+  }, 30000); // Mỗi 30 giây
   
   // Inject game helpers
   injectGameHelpers();
@@ -223,6 +403,45 @@ function initializeContentScript() {
 }
 
 
+// ===== Cleanup on page unload =====
+window.addEventListener('beforeunload', () => {
+  stopAntiSuspension();
+  
+  try {
+    chrome.runtime.sendMessage({
+      action: 'CONTENT_SCRIPT_UNLOADING',
+      timestamp: Date.now()
+    });
+  } catch (e) {
+    // Ignore errors during unload
+  }
+});
+
+// ===== Debug object =====
+window.contentScriptDebug = {
+  getStatus: () => ({
+    isTabActive,
+    lastActivityTime: new Date(lastActivityTime),
+    timeSinceLastActivity: Date.now() - lastActivityTime,
+    keepAliveActive: !!keepAliveInterval,
+    pageVisibility: document.visibilityState,
+    hasFocus: document.hasFocus()
+  }),
+  
+  simulateActivity: () => {
+    lastActivityTime = Date.now();
+    console.log('🧪 Activity simulated');
+  },
+  
+  forceKeepAlive: () => {
+    if (keepAliveInterval) {
+      stopAntiSuspension();
+    }
+    startAntiSuspension();
+    console.log('🔄 Keep-alive restarted');
+  }
+};
+
 
 // Wait for DOM to be ready
 if (document.readyState === 'loading') {
@@ -230,7 +449,6 @@ if (document.readyState === 'loading') {
 } else {
   initializeContentScript();
 }
-
 
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

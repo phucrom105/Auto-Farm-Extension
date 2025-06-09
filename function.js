@@ -15,7 +15,7 @@
     console.log("🌱 === BẮT ĐẦU GIAI ĐOẠN TRỒNG CÂY ===");
     
     const maxPlantingTime = 4 * 60 * 1000; // Tối đa 4 phút
-    const checkInterval = 15000; // Kiểm tra mỗi 15 giây
+    const checkInterval = 5000; // Kiểm tra mỗi 15 giây
     const startTime = Date.now();
     
     let consecutiveNoPlantCount = 0;
@@ -67,7 +67,7 @@
         break;
       }
 
-      console.log("⏳ Chờ 15 giây trước khi kiểm tra ô trồng tiếp theo...");
+      console.log("⏳ Chờ 5 giây trước khi kiểm tra ô trồng tiếp theo...");
       await new Promise((resolve) => setTimeout(resolve, checkInterval));
     }
     
@@ -148,15 +148,26 @@ async function handlePlantClick() {
   }
 }
 
+function findMarketImage() {
+  console.log("🔍 Đang tìm kiếm Market...");
+  
+  // Tìm cả hai loại market có thể có
+  const marketImage = document.querySelector("img[src*='market.webp'], img[src*='bettys_market.png']");
+  
+  if (marketImage) {
+    const marketType = marketImage.src.includes('market.webp') ? 'market.webp' : 'bettys_market.png';
+    return marketImage;
+  } else {
+    console.log("❌ Không tìm thấy Market");
+    return null;
+  }
+}
+
 // chọn hạt giống
 async function selectSeed(seedOrder) {
   console.log("🛒 Đang tìm Market...");
 
-  const marketImage = document.querySelector("img[src*='market.webp']");
-  if (!marketImage) {
-    console.log("❌ Không tìm thấy Market, dừng lại!");
-    return;
-  }
+  const marketImage = findMarketImage();
 
   marketImage.click();
   console.log("✅ Đã click vào Market");
@@ -335,65 +346,444 @@ function isSoldOutVisible() {
     });
 }
 
-// Tìm nút Buy tốt nhất (ưu tiên Buy 10 -> Buy 1) - CẬP NHẬT MỖI LẦN
+
+// Kiểm tra và xử lý popup xác nhận
+async function handleConfirmationPopup() {
+  try {
+  
+    // Chờ popup load hoàn toàn
+    await new Promise(r => setTimeout(r, 400));
+    
+    let confirmButton = null;
+    
+    // PHƯƠNG PHÁP ĐƠN GIẢN: Tìm nút Buy thứ 4 (nút xác nhận trong popup)
+    
+    const allButtons = Array.from(document.querySelectorAll('button'));
+    const visibleBuyButtons = [];
+    
+    // Lọc tất cả nút Buy hiển thị
+    allButtons.forEach((btn, index) => {
+      const rect = btn.getBoundingClientRect();
+      const text = btn.textContent.trim();
+      
+      if (rect.width > 0 && rect.height > 0 && !btn.disabled) {
+        // Nút có chứa từ "Buy" hoặc có pattern "Buy X"
+        if (text.toLowerCase().includes('buy') || text.match(/^Buy\s+\d+$/)) {
+          visibleBuyButtons.push({
+            button: btn,
+            text: text,
+            index: index
+          });
+        }
+      }
+    });
+    
+    console.log(`📋 Tìm thấy ${visibleBuyButtons.length} nút Buy hiển thị:`);
+    visibleBuyButtons.forEach((btn, i) => {
+      console.log(`   ${i + 1}. "${btn.text}"`);
+    });
+    
+    // Nút thứ 4 (index 3) chính là nút xác nhận trong popup
+    if (visibleBuyButtons.length >= 4) {
+      confirmButton = visibleBuyButtons[3].button; // Index 3 = nút thứ 4
+      console.log(`🎯 Tìm thấy nút Buy thứ 4 (xác nhận): "${confirmButton.textContent.trim()}"`);
+    }
+    // Fallback: Nếu chỉ có 3 nút, tìm nút mới nhất (không phải Cancel)
+    else if (visibleBuyButtons.length === 3) {
+      // Có thể nút thứ 3 chính là nút xác nhận
+      const lastBuyButton = visibleBuyButtons[2].button;
+      
+      // Kiểm tra xem có nút Cancel không
+      const hasCancelButton = allButtons.some(btn => {
+        const rect = btn.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && 
+               btn.textContent.toLowerCase().includes('cancel');
+      });
+      
+      if (hasCancelButton) {
+        confirmButton = lastBuyButton;
+        console.log(`🎯 Fallback: Chọn nút Buy cuối cùng làm nút xác nhận: "${confirmButton.textContent.trim()}"`);
+      }
+    }
+    
+    // Fallback cuối cùng: Tìm nút Buy mới xuất hiện (không phải Cancel)
+    if (!confirmButton) {
+      console.log("🔍 Fallback: Tìm nút Buy mới xuất hiện trong popup...");
+      
+      // Tìm container có cả Buy và Cancel
+      const containers = Array.from(document.querySelectorAll('div'));
+      
+      for (const container of containers) {
+        const containerButtons = Array.from(container.querySelectorAll('button'));
+        const visibleContainerButtons = containerButtons.filter(btn => {
+          const rect = btn.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && !btn.disabled;
+        });
+        
+        if (visibleContainerButtons.length >= 2) {
+          const hasCancel = visibleContainerButtons.some(btn => 
+            btn.textContent.toLowerCase().includes('cancel')
+          );
+          
+          const buyButtons = visibleContainerButtons.filter(btn => 
+            btn.textContent.toLowerCase().includes('buy') && 
+            !btn.textContent.toLowerCase().includes('cancel')
+          );
+          
+          if (hasCancel && buyButtons.length > 0) {
+            // Chọn nút Buy cuối cùng trong container này
+            confirmButton = buyButtons[buyButtons.length - 1];
+            console.log(`🎯 Tìm thấy nút xác nhận trong container: "${confirmButton.textContent.trim()}"`);
+            break;
+          }
+        }
+      }
+    }
+    
+    // Thực hiện click nút xác nhận
+    if (confirmButton) {
+      const buttonText = confirmButton.textContent.trim();
+      console.log(`🎯 SẼ CLICK NÚT XÁC NHẬN: "${buttonText}"`);
+      
+      // Đảm bảo nút visible và scroll vào view
+      confirmButton.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'center',
+        inline: 'center'
+      });
+      
+      await new Promise(r => setTimeout(r, 300));
+      
+      // Click nút xác nhận
+      let clickSuccess = false;
+      
+      try {
+        confirmButton.click();
+        console.log(`🖱️ Đã click nút xác nhận: "${buttonText}"`);
+        clickSuccess = true;
+      } catch (error) {
+        console.log(`⚠️ Click thường thất bại, thử click với event:`, error.message);
+        
+        try {
+          const clickEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window
+          });
+          confirmButton.dispatchEvent(clickEvent);
+          console.log(`🖱️ Đã click với event: "${buttonText}"`);
+          clickSuccess = true;
+        } catch (error2) {
+          console.log(`❌ Cả hai cách click đều thất bại:`, error2.message);
+        }
+      }
+      
+      if (clickSuccess) {
+        // Chờ popup đóng
+        await new Promise(r => setTimeout(r, 500));
+        
+        // Kiểm tra popup đã đóng
+        let popupClosed = false;
+        for (let i = 0; i < 10; i++) {
+          if (!isConfirmationPopupVisible()) {
+            popupClosed = true;
+            break;
+          }
+          await new Promise(r => setTimeout(r, 100));
+        }
+        
+        if (popupClosed) {
+          console.log("✅ XÁC NHẬN MUA THÀNH CÔNG - Popup đã đóng");
+        } else {
+          console.log("⚠️ Popup vẫn hiển thị, nhưng có thể đã mua thành công");
+        }
+        
+        return true;
+      } else {
+        console.log("❌ KHÔNG THỂ CLICK NÚT XÁC NHẬN");
+        return false;
+      }
+    } else {
+      console.log("❌ KHÔNG TÌM THẤY NÚT XÁC NHẬN");
+      
+      // Debug: Hiển thị tất cả nút hiện tại
+      console.log("\n🔍 DEBUG: Tất cả nút hiển thị hiện tại:");
+      const debugButtons = Array.from(document.querySelectorAll('button')).filter(btn => {
+        const rect = btn.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
+      
+      debugButtons.forEach((btn, i) => {
+        console.log(`   ${i + 1}. "${btn.textContent.trim()}" - Disabled: ${btn.disabled}`);
+      });
+      
+      return false;
+    }
+    
+  } catch (error) {
+    console.error("❌ Lỗi khi xử lý popup xác nhận:", error);
+    return false;
+  }
+}
+
+// Debug function - kiểm tra popup và các nút
+function debugPopupButtons() {
+  console.log("🔍 DEBUG POPUP: Kiểm tra tất cả nút trong popup...");
+  
+  const allButtons = Array.from(document.querySelectorAll('button'));
+  const visibleButtons = allButtons.filter(btn => {
+    const rect = btn.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+  
+  console.log(`📋 Tìm thấy ${visibleButtons.length} nút hiển thị:`);
+  
+  visibleButtons.forEach((btn, i) => {
+    const text = btn.textContent.trim();
+    const isDisabled = btn.disabled;
+    const hasLightButton = btn.style.getPropertyValue('--button-image').includes('light_button.png');
+    
+    // Phân loại nút
+    let category = "Khác";
+    if (text.toLowerCase().includes('cancel')) {
+      category = "Cancel";
+    } else if (text.match(/^Buy\s+(\d+)$/)) {
+      const quantity = parseInt(text.match(/\d+/)[0]);
+      if (quantity === 1) {
+        category = "Buy 1 (BỎ QUA)";
+      } else if (quantity === 10) {
+        category = "Buy 10 (BỎ QUA)";
+      } else {
+        category = `Buy ${quantity} (HỢP LỆ)`;
+      }
+    }
+    
+    console.log(`  ${i + 1}. "${text}" - ${category} - Disabled: ${isDisabled} - LightButton: ${hasLightButton}`);
+  });
+  
+  // Tìm nút hợp lệ
+  const validBuyButtons = visibleButtons.filter(btn => {
+    const text = btn.textContent.trim();
+    const match = text.match(/^Buy\s+(\d+)$/);
+    if (match) {
+      const quantity = parseInt(match[1]);
+      return quantity > 1 && quantity !== 10 && !btn.disabled;
+    }
+    return false;
+  });
+  
+  console.log(`\n🎯 Nút Buy hợp lệ (X > 1, X ≠ 10):`);
+  if (validBuyButtons.length > 0) {
+    validBuyButtons.forEach((btn, i) => {
+      const quantity = parseInt(btn.textContent.match(/\d+/)[0]);
+      console.log(`   ${i + 1}. "${btn.textContent.trim()}" - Số lượng: ${quantity} ✅`);
+    });
+    console.log(`\n⭐ SẼ CHỌN: "${validBuyButtons[0].textContent.trim()}"`);
+  } else {
+    console.log("   ❌ Không tìm thấy nút Buy hợp lệ!");
+  }
+  
+  return validBuyButtons;
+}
+
+
+function isConfirmationPopupVisible() {
+  try {
+    const allButtons = Array.from(document.querySelectorAll('button'));
+    const visibleButtons = allButtons.filter(btn => {
+      const rect = btn.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+    
+    // Đếm số nút Buy hiển thị
+    const buyButtonCount = visibleButtons.filter(btn => 
+      btn.textContent.toLowerCase().includes('buy')
+    ).length;
+    
+    // Kiểm tra có nút Cancel không
+    const hasCancelButton = visibleButtons.some(btn => 
+      btn.textContent.toLowerCase().includes('cancel')
+    );
+    
+    // Popup xuất hiện khi có >= 4 nút Buy HOẶC có Cancel + ít nhất 1 nút Buy
+    const hasPopup = buyButtonCount >= 4 || (hasCancelButton && buyButtonCount >= 1);
+    
+    if (hasPopup) {
+      console.log(`🔍 Popup detected: ${buyButtonCount} nút Buy, Cancel: ${hasCancelButton}`);
+    }
+    
+    return hasPopup;
+    
+  } catch (error) {
+    console.error("Lỗi khi kiểm tra popup:", error);
+    return false;
+  }
+}
+
+
+// Tìm nút Buy tốt nhất theo logic: Nút 3 (Buy All) -> Nút 2 (Buy 10 hoặc Buy X) -> Nút 1 (Buy 1)
 async function findBestAvailableBuyButton() {
-  const container = await findBuyContainer();
-  if (!container) {
-    console.log("❌ Không tìm thấy vùng chứa các nút Buy.");
+  // Tìm tất cả nút Buy theo class chính xác
+  const buyButtonSelectors = [
+    // Nút Buy với class cụ thể
+    'button.w-full.p-1.text-sm[class*="justify-center"][class*="items-center"]',
+    // Nút Buy trong container
+    'div[class*="flex"][class*="space-x"] button',
+    // Fallback selector
+    'button'
+  ];
+  
+  let allButtons = [];
+  
+  for (const selector of buyButtonSelectors) {
+    try {
+      const buttons = Array.from(document.querySelectorAll(selector));
+      const buyButtons = buttons.filter(btn => {
+        const text = btn.textContent.toLowerCase();
+        return text.includes("buy") && !btn.disabled &&
+               btn.getBoundingClientRect().width > 0 && 
+               btn.getBoundingClientRect().height > 0;
+      });
+      
+      if (buyButtons.length > 0) {
+        allButtons = buyButtons;
+        break;
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+  
+  if (allButtons.length === 0) {
+    console.log("❌ Không tìm thấy nút Buy nào.");
     return null;
   }
 
-  const buttons = Array.from(container.querySelectorAll("button"));
+  console.log(`🔍 Tìm thấy ${allButtons.length} nút Buy`);
   
-  // Kiểm tra từ Buy 10 xuống Buy 1, tìm nút khả dụng đầu tiên
-  for (let i = 10; i >= 1; i--) {
-    const btn = buttons.find(b => {
-      const text = b.textContent.toLowerCase();
-      return text.includes(`buy ${i}`) && !b.disabled && 
-             b.getBoundingClientRect().width > 0 && 
-             b.getBoundingClientRect().height > 0;
-    });
+  // Ưu tiên: Nút 3 (Buy All) -> Nút 2 (Buy 10/X) -> Nút 1 (Buy 1)
+  
+  // 1. Tìm nút thứ 3 (Buy All) - chỉ xuất hiện khi stock > 10
+  if (allButtons.length >= 3) {
+    const thirdButton = allButtons[2]; // Index 2 = nút thứ 3
+    const thirdButtonText = thirdButton.textContent.toLowerCase().trim();
     
-    if (btn) {
-      console.log(`🎯 Tìm thấy nút khả dụng: ${btn.textContent.trim()}`);
-      return btn;
+    // Nút thứ 3 có thể là "Buy All", "Buy [số lớn]", hoặc có class đặc biệt
+    const isThirdButton = thirdButton.classList.contains('mt-1') || 
+                         thirdButton.style.getPropertyValue('--button-image').includes('light_button.png') ||
+                         thirdButtonText.includes('all') ||
+                         /buy\s*\d{2,}/.test(thirdButtonText); // Buy với số >= 10
+    
+    if (isThirdButton) {
+      console.log(`🎯 Ưu tiên nút thứ 3: ${thirdButton.textContent.trim()}`);
+      return { 
+        button: thirdButton, 
+        quantity: 'all', 
+        isThirdButton: true,
+        buttonPosition: 3
+      };
     }
   }
-
-  // Nếu không tìm thấy nút Buy có số, tìm nút Buy chung
-  const genericBuyBtn = buttons.find(b => {
-    const text = b.textContent.toLowerCase();
-    return text.includes("buy") && !b.disabled &&
-           b.getBoundingClientRect().width > 0 && 
-           b.getBoundingClientRect().height > 0;
-  });
-
-  if (genericBuyBtn) {
-    console.log(`🎯 Tìm thấy nút Buy chung: ${genericBuyBtn.textContent.trim()}`);
-    return genericBuyBtn;
+  
+  // 2. Tìm nút thứ 2 (Buy 10 hoặc Buy X khi stock ≤ 10)
+  if (allButtons.length >= 2) {
+    const secondButton = allButtons[1]; // Index 1 = nút thứ 2
+    const secondButtonText = secondButton.textContent.toLowerCase().trim();
+    
+    console.log(`🎯 Chọn nút thứ 2: ${secondButton.textContent.trim()}`);
+    
+    // Trích xuất số lượng từ text
+    const quantityMatch = secondButtonText.match(/buy\s*(\d+)/);
+    const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 10;
+    
+    return { 
+      button: secondButton, 
+      quantity: quantity, 
+      isThirdButton: false,
+      buttonPosition: 2
+    };
+  }
+  
+  // 3. Fallback: Nút thứ 1 (Buy 1)
+  if (allButtons.length >= 1) {
+    const firstButton = allButtons[0]; // Index 0 = nút thứ 1
+    console.log(`🎯 Fallback nút thứ 1: ${firstButton.textContent.trim()}`);
+    
+    return { 
+      button: firstButton, 
+      quantity: 1, 
+      isThirdButton: false,
+      buttonPosition: 1
+    };
   }
 
   return null;
 }
 
-async function safeClickButton(button, buttonName) {
+async function safeClickButton(button, buttonName, isThirdButton = false, buttonPosition = 1) {
   try {
     if (!button) {
       console.log(`⚠️ Nút ${buttonName} không tồn tại.`);
       return false;
     }
-    if (button.disabled) {
-      console.log(`⚠️ Nút ${buttonName} bị vô hiệu hóa.`);
-      return false;
-    }
+    
     const rect = button.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) {
       console.log(`⚠️ Nút ${buttonName} không hiển thị.`);
       return false;
     }
-    button.click();
+    
+    if (button.disabled) {
+      console.log(`⚠️ Nút ${buttonName} bị vô hiệu hóa.`);
+      return false;
+    }
+    
+    // Scroll vào view trước khi click
+    button.scrollIntoView({ behavior: 'smooth', block: 'center' });
     await new Promise(r => setTimeout(r, 200));
+    
+    button.click();
+    console.log(`🖱️ Đã click nút ${buttonName} (vị trí ${buttonPosition}${isThirdButton ? ' - có popup' : ''})`);
+    
+    // Chỉ nút thứ 3 mới có popup xác nhận
+    if (isThirdButton && buttonPosition === 3) {
+      
+      // Chờ popup xuất hiện với timeout dài hơn
+      let popupAppeared = false;
+      for (let i = 0; i < 15; i++) { // Tăng từ 10 lên 15 lần
+        if (isConfirmationPopupVisible()) {
+          popupAppeared = true;
+          break;
+        }
+        await new Promise(r => setTimeout(r, 100));
+      }
+      
+      if (!popupAppeared) {
+        // Thử kiểm tra xem có thể đã mua thành công luôn
+        await new Promise(r => setTimeout(r, 500));
+        
+        // Nếu vẫn không có popup, coi như thành công
+        if (!isConfirmationPopupVisible()) {
+          return true;
+        }
+      }
+      
+      // Xử lý popup nếu có
+      if (popupAppeared || isConfirmationPopupVisible()) {
+        const confirmed = await handleConfirmationPopup();
+        if (!confirmed) {
+          console.log(`⚠️ Không thể xác nhận mua ${buttonName}`);
+          return false;
+        }
+        console.log("✅ Đã xác nhận mua thành công");
+      }
+    } else {
+      // Nút 1 và 2 không có popup, chờ ngắn
+      await new Promise(r => setTimeout(r, 200));
+    }
+    
     return true;
+    
   } catch (error) {
     console.error(`❌ Lỗi khi click nút ${buttonName}:`, error);
     return false;
@@ -417,7 +807,7 @@ function getCurrentStock() {
   return null;
 }
 
-// Mua seed tự động từ danh sách seedBuy - PHIÊN BẢN CẢI TIẾN
+// Mua seed tự động từ danh sách seedBuy - PHIÊN BẢN CẢI TIẾN CHO NHIỀU NÚT BUY
 async function handleBuySeed(seedBuy) {
   console.log("🛒 Đang tìm Market...");
 
@@ -465,14 +855,14 @@ async function handleBuySeed(seedBuy) {
     console.log(`💰 Bắt đầu mua hạt giống số ${seedIndex} cho đến khi Sold Out...`);
     
     let consecutiveFailures = 0;
-    const maxFailures = 8; // Tăng số lần thử
+    const maxFailures = 8;
     let buyCount = 0;
 
     while (!isSoldOutVisible()) {
       // TÌM LẠI NÚT MỖI LẦN để đảm bảo có nút phù hợp nhất
-      const availableButton = await findBestAvailableBuyButton();
+      const buttonInfo = await findBestAvailableBuyButton();
       
-      if (!availableButton) {
+      if (!buttonInfo) {
         consecutiveFailures++;
         console.log(`⚠️ Không tìm thấy nút Buy khả dụng (lần ${consecutiveFailures}/${maxFailures})`);
         
@@ -481,23 +871,28 @@ async function handleBuySeed(seedBuy) {
           break;
         }
         
-        await new Promise(r => setTimeout(r, 500)); // Đợi lâu hơn khi không tìm thấy nút
+        await new Promise(r => setTimeout(r, 500));
         continue;
       }
 
+      const { button: availableButton, quantity, isThirdButton, buttonPosition } = buttonInfo;
       const buttonLabel = availableButton.textContent.trim();
-      const clicked = await safeClickButton(availableButton, buttonLabel);
+      
+      // Chỉ nút thứ 3 mới cần popup xác nhận
+      const clicked = await safeClickButton(availableButton, buttonLabel, isThirdButton, buttonPosition);
 
       if (clicked) {
         buyCount++;
-        consecutiveFailures = 0; // Reset khi mua thành công
+        consecutiveFailures = 0;
         
-        // Log progress
+        // Log progress với thông tin chi tiết
         const currentStock = getCurrentStock();
+        const quantityText = quantity === 'all' ? 'ALL' : quantity;
+        
         if (currentStock !== null) {
-          console.log(`📦 Đã mua ${buyCount} lần, Stock còn: ${currentStock}`);
+          console.log(`📦 Đã mua ${buyCount} lần (${quantityText} mỗi lần, nút ${buttonPosition}), Stock còn: ${currentStock}`);
         } else {
-          console.log(`📦 Đã mua ${buyCount} lần bằng ${buttonLabel}`);
+          console.log(`📦 Đã mua ${buyCount} lần bằng ${buttonLabel} (nút ${buttonPosition})`);
         }
       } else {
         consecutiveFailures++;
@@ -515,7 +910,9 @@ async function handleBuySeed(seedBuy) {
         break;
       }
 
-      await new Promise(r => setTimeout(r, 250)); // Giảm delay để mua nhanh hơn
+      // Delay tùy thuộc vào vị trí nút: nút 3 cần thời gian xử lý popup
+      const delay = buttonPosition === 3 ? 600 : (buttonPosition === 2 ? 300 : 250);
+      await new Promise(r => setTimeout(r, delay));
     }
 
     console.log(`✅ Hoàn thành mua seed ${seedIndex}`);
@@ -648,7 +1045,6 @@ async function handleBuySeed(seedBuy) {
         innerHTML: axeContainer.innerHTML.substring(0, 200) + "...",
         childrenCount: axeContainer.children.length
       };
-      console.log("📦 Container info:", containerInfo);
 
       // Phương pháp 1: Tìm số trong direct children (con trực tiếp của div.relative)
       const directNumbers = Array.from(axeContainer.children)
@@ -663,8 +1059,6 @@ async function handleBuySeed(seedBuy) {
           const isNumber = /^\d+$/.test(text);
           const value = parseInt(text);
           
-          console.log(`🔍 Child element: tag=${child.tagName}, text="${text}", isNumber=${isNumber}, value=${value}`);
-          
           return isNumber && value > 0 && value <= 999;
         })
         .map(el => ({
@@ -675,11 +1069,9 @@ async function handleBuySeed(seedBuy) {
         }));
 
       if (directNumbers.length > 0) {
-        console.log(`✅ Tìm thấy ${directNumbers.length} số trong direct children:`, directNumbers.map(n => `${n.value} (${n.tagName})`));
         
         // Nếu chỉ có 1 số, đó chính là số lượng rìu
         if (directNumbers.length === 1) {
-          console.log(`✅ Số lượng rìu: ${directNumbers[0].value}`);
           return directNumbers[0].value;
         }
         
@@ -1038,132 +1430,181 @@ async function handleBuySeed(seedBuy) {
     }
   }
 
-  async function handleTreeChop() {
-    console.log("🌲 Bắt đầu chặt cây (phiên bản nâng cao)...");
+ // Hàm helper để kiểm tra xem img có phải là cây không (hỗ trợ tất cả mùa)
+function isTreeImage(imgSrc) {
+  if (!imgSrc) return false;
+  
+  const treeSources = [
+    'spring_spring_tree.webp',
+    'summer_spring_tree.webp', 
+    'autumn_spring_tree.webp',
+    'winter_spring_tree.webp',
+    'spring_basic_tree.webp'
+  ];
+  
+  return treeSources.some(treeSource => imgSrc.includes(treeSource));
+}
 
-    let attempt = 0;
-    const maxAttempts = 3;
+function getSeasonFromTreeSrc(treeSrc) {
+  if (treeSrc.startsWith('spring_')) return 'spring';
+  if (treeSrc.startsWith('summer_')) return 'summer';
+  if (treeSrc.startsWith('autumn_')) return 'autumn';
+  if (treeSrc.startsWith('winter_')) return 'winter';
+  return 'unknown';
+}
 
-    while (attempt < maxAttempts) {
-      attempt++;
-      console.log(`🔄 Lần thử ${attempt}/${maxAttempts}`);
+// Hàm tìm tất cả cây hiện có trên màn hình
+function findAllTrees() {
+  const trees = Array.from(document.querySelectorAll("img"))
+    .filter(img => {
+      const src = img.src || img.getAttribute('src') || '';
+      return isTreeImage(src);
+    });
+  return trees;
+}
 
-      // Quét lại cây hiện có
-      const trees = Array.from(document.querySelectorAll("img"))
-        .filter(img => img.src.includes("spring_basic_tree.webp"));
+// Cập nhật hàm handleTreeChop để sử dụng findAllTrees
+async function handleTreeChop() {
+  console.log("🌲 Bắt đầu chặt cây (hỗ trợ tất cả mùa)...");
 
-      if (trees.length === 0) {
-        console.log("✅ Không còn cây nào để chặt!");
-        break;
-      }
+  let attempt = 0;
+  const maxAttempts = 3;
 
-      console.log(`🌳 Tìm thấy ${trees.length} cây cần chặt...`);
+  while (attempt < maxAttempts) {
+    attempt++;
+    console.log(`🔄 Lần thử ${attempt}/${maxAttempts}`);
 
-      // Chuẩn bị rìu (1 rìu cho 1 cây)
-      const totalAxesNeeded = trees.length;
-      const hasEnoughAxes = await checkAndBuyAxes(totalAxesNeeded);
+    // Quét lại cây hiện có (tất cả mùa)
+    const trees = findAllTrees();
+    if (trees.length === 0) {
+      console.log("✅ Không còn cây nào để chặt!");
+      break;
+    }
+
+    console.log(`🌳 Tìm thấy ${trees.length} cây cần chặt...`);
+
+    // Chuẩn bị rìu (1 rìu cho 1 cây)
+    const totalAxesNeeded = trees.length;
+    const hasEnoughAxes = await checkAndBuyAxes(totalAxesNeeded);
+    
+    if (!hasEnoughAxes) {
+      console.log("❌ Không đủ rìu, bỏ qua lần thử này.");
+      continue;
+    }
+
+    // Chặt từng cây
+    for (let i = 0; i < trees.length; i++) {
+      const tree = trees[i];
       
-      if (!hasEnoughAxes) {
-        console.log("❌ Không đủ rìu, bỏ qua lần thử này.");
+      // Kiểm tra cây vẫn tồn tại
+      if (!document.body.contains(tree)) {
+        console.log(`⚠️ Cây thứ ${i + 1} đã biến mất, bỏ qua.`);
         continue;
       }
 
-      // Chặt từng cây
-      for (let i = 0; i < trees.length; i++) {
-        const tree = trees[i];
-        
-        // Kiểm tra cây vẫn tồn tại
-        if (!document.body.contains(tree)) {
-          console.log(`⚠️ Cây thứ ${i + 1} đã biến mất, bỏ qua.`);
-          continue;
-        }
+      // Xác định loại cây ĐÚNG CÁCH
+      const treeSrc = tree.src || tree.getAttribute('src') || '';
+      const fileName = treeSrc.split('/').pop() || '';
+      const season = getSeasonFromTreeSrc(fileName);
 
-        console.log(`🪓 Chặt cây thứ ${i + 1}/${trees.length}...`);
-        
-        const success = await chopSingleTree(tree, i + 1);
-        if (!success) {
-          console.log(`❌ Không thể chặt cây thứ ${i + 1}`);
-        }
-        
-        // Nghỉ giữa các cây
-        await new Promise(resolve => setTimeout(resolve, 800));
+      console.log(`🪓 Chặt cây thứ ${i + 1}/${trees.length} (mùa ${season})...`);
+      
+      const success = await chopSingleTree(tree, i + 1, season);
+      if (!success) {
+        console.log(`❌ Không thể chặt cây thứ ${i + 1}`);
       }
-
-      // Chờ một chút trước khi kiểm tra lại
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Nghỉ giữa các cây
+      await new Promise(resolve => setTimeout(resolve, 800));
     }
 
-    console.log("🏁 Hoàn thành quá trình chặt cây!");
+    // Chờ một chút trước khi kiểm tra lại
+    await new Promise(resolve => setTimeout(resolve, 2000));
   }
 
-  // Hàm chặt 1 cây cụ thể với timing được tối ưu (100ms giữa các click)
-  async function chopSingleTree(treeElement, treeNumber) {
-    try {
-      console.log(`  🌳 Bắt đầu chặt cây số ${treeNumber} (3 lần click, mỗi lần cách nhau 100ms)...`);
-      
-      // Click lần đầu vào cây gốc (spring_basic_tree.webp)
-      console.log(`    🪓 Click lần 1/3 vào cây gốc (spring_basic_tree.webp)...`);
-      treeElement.click();
-      
-      // Chờ 100ms và kiểm tra cây đã chuyển thành shake
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Sau click đầu, element chuyển thành background-image với shake_sheet
-      let currentTree = findShakeTree();
-      
-      if (!currentTree) {
-        console.log(`    ❌ Không tìm thấy cây shake sau click đầu tiên`);
-        return false;
-      }
-      
-      console.log(`    🌪️ Cây đã chuyển thành shake (background-image), tiếp tục click...`);
-      
-      // Click lần 2 vào cây shake
-      console.log(`    🪓 Click lần 2/3 vào cây shake...`);
-      currentTree.click();
-      
-      // Chờ 100ms
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Tìm lại cây shake cho lần click cuối
-      currentTree = findShakeTree();
-      
-      if (!currentTree) {
-        console.log(`    ✅ Cây đã được chặt xong sau 2 lần click!`);
-        return true;
-      }
-      
-      // Click lần 3 vào cây shake
-      console.log(`    🪓 Click lần 3/3 vào cây shake...`);
-      currentTree.click();
-      
-      // Chờ animation hoàn thành sau lần click cuối (400ms để đảm bảo)
-      await new Promise(resolve => setTimeout(resolve, 400));
-      
-      // Kiểm tra cây shake đã bị xóa chưa
-      const finalTree = findShakeTree();
-      
-      if (!finalTree) {
-        console.log(`    ✅ Cây số ${treeNumber} đã bị chặt thành công!`);
-        return true;
-      } else {
-        console.log(`    ⚠️ Cây số ${treeNumber} vẫn còn dạng shake sau 3 lần click.`);
-        return false;
-      }
+  console.log("🏁 Hoàn thành quá trình chặt cây!");
+}
 
-    } catch (error) {
-      console.error(`    ❌ Lỗi khi chặt cây số ${treeNumber}:`, error);
+// Cập nhật hàm chopSingleTree để xử lý tất cả mùa
+async function chopSingleTree(treeElement, treeNumber, season) {
+  try {
+    console.log(`  🌳 Bắt đầu chặt cây số ${treeNumber} mùa ${season}`);
+    
+    // Click lần đầu vào cây gốc
+    console.log(`    🪓 Click lần 1/3 vào cây mùa ${season}...`);
+    treeElement.click();
+    
+    // Chờ 200ms và kiểm tra cây đã chuyển thành shake
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    // Sau click đầu, element chuyển thành background-image với shake_sheet
+    let currentTree = findShakeTree(season);
+    
+    if (!currentTree) {
+      console.log(`    ⚠️ Không tìm thấy shake tree mùa ${season} sau click đầu`);
       return false;
     }
-  }
+    
+    // Click lần 2 vào cây shake
+    console.log(`    🪓 Click lần 2/3 vào cây mùa ${season}...`);
+    currentTree.click();
+    
+    // Chờ 200ms
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    // Tìm lại cây shake cho lần click cuối
+    currentTree = findShakeTree(season);
+    
+    if (!currentTree) {
+      console.log(`    ✅ Cây mùa ${season} đã được chặt xong sau 2 lần click!`);
+      return true;
+    }
+    
+    // Click lần 3 vào cây shake
+    console.log(`    🪓 Click lần 3/3 vào cây mùa ${season}...`);
+    currentTree.click();
+    
+    // Chờ animation hoàn thành sau lần click cuối (400ms để đảm bảo)
+    await new Promise(resolve => setTimeout(resolve, 700));
+    
+    // Kiểm tra cây shake đã bị xóa chưa
+    const finalTree = findShakeTree(season);
+    
+    if (!finalTree) {
+      console.log(`    ✅ Cây số ${treeNumber} mùa ${season} đã bị chặt thành công!`);
+      return true;
+    } else {
+      console.log(`    ⚠️ Cây số ${treeNumber} mùa ${season} vẫn còn chưa chặt xong sau 3 lần click.`);
+      return false;
+    }
 
-  // Hàm helper để tìm element shake dựa trên background-image
-  function findShakeTree() {
-    return Array.from(document.querySelectorAll('*')).find(el => {
-      const style = window.getComputedStyle(el);
-      return style.backgroundImage && style.backgroundImage.includes('spring_basic_trees_shake_sheet.webp');
-    });
+  } catch (error) {
+    console.error(`    ❌ Lỗi khi chặt cây số ${treeNumber}:`, error);
+    return false;
   }
+}
+
+// Cập nhật hàm findShakeTree để hỗ trợ tất cả mùa
+function findShakeTree(season = null) {
+  return Array.from(document.querySelectorAll('*')).find(el => {
+    const style = window.getComputedStyle(el);
+    if (!style.backgroundImage || !style.backgroundImage.includes('shake_sheet.webp')) {
+      return false;
+    }
+    
+    // Nếu không chỉ định mùa, tìm bất kì shake tree nào
+    if (!season) {
+      return true;
+    }
+    
+    const shakePatterns = [
+      `${season}_spring_trees_shake_sheet.webp`,  
+      `${season}_basic_trees_shake_sheet.webp`   
+    ];
+    
+    return shakePatterns.some(pattern => style.backgroundImage.includes(pattern));
+  });
+}
 
 
 

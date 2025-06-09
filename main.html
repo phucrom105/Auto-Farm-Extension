@@ -29,8 +29,54 @@
       margin: 0;
     }
 
+    /* Version Info Styles */
+    #version-info {
+      margin-bottom: 15px; /* Giảm khoảng cách dưới */
+      text-align: center;
+      font-size: 14px; /* Kích thước chữ nhỏ hơn */
+    }
+    .version-row {
+      display: inline-flex;
+      justify-content: flex-start;
+      gap: 4px; /* Giảm khoảng cách giữa các phần tử */
+      flex-wrap: nowrap;
+      vertical-align: middle;
+      margin-bottom: 4px;
+      min-width: 120px;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    .version-label {
+      font-weight: 600;
+      color: #374151;
+      margin-right: 4px; /* Giảm khoảng cách bên phải */
+      white-space: nowrap;
+    }
+    .version-value {
+      font-weight: 700;
+      color: #111827;
+      font-family: 'Courier New', Courier, monospace;
+      user-select: text;
+      background: #f3f4f6;
+      border-radius: 0.5rem;
+      white-space: nowrap; /* Không để xuống dòng */
+      overflow: hidden;
+      text-overflow: ellipsis; /* Rút gọn nếu quá dài */
+      max-width: 100px; /* Giới hạn chiều rộng tối đa */
+      box-sizing: border-box; /* Tính cả padding trong kích thước */
+      padding: 2px 6px; /* Giảm padding */
+      text-align: center;
+    }
+    #update-status {
+      margin-top: 8px; /* Giảm khoảng cách trên */
+      font-weight: 600;
+      color: #2563eb;
+      min-height: 1.5em;
+    }
+    
     h1 {
-      font-size: 18px;
+      font-size: 18px; /* Kích thước chữ tiêu đề */
       margin-bottom: 15px;
       animation: pinkGlow 2s infinite;
       color: #ff69b4;
@@ -250,7 +296,20 @@
   </style>
 </head>
 <body>
+
   <h1>🤖Automation Sunflower Land🤖</h1>
+
+  <div id="version-info" aria-label="Thông tin phiên bản">
+    <div class="version-row">
+      <span class="version-label">Current Version:</span>
+      <span id="current-version-value" class="version-value">---</span>
+    </div>
+    <div class="version-row">
+      <span class="version-label">Original Version:</span>
+      <span id="original-version-value" class="version-value">---</span>
+    </div>
+    <p id="update-status" role="alert" aria-live="assertive" aria-atomic="true"></p>
+  </div>
 
   <button class="button toggle-btn off" id="startBtn">
     <span class="status-indicator" id="statusIndicator"></span>🚀 Start: OFF
@@ -260,7 +319,7 @@
   
   <div class="input-container" id="autoPlantInputs">
     <div class="input-label">🌱 Seed Order (1,2,3...):</div>
-    <input type="text" id="seedOrderInput" placeholder="Ví dụ: 1,2,3,4" />
+    <input type="text" id="seedOrderInput" placeholder="Ví dụ: 1,2,3,4,5" />
   </div>
 
   <div id="autoPlantOptions">
@@ -274,14 +333,14 @@
   
   <div class="input-container" id="autoBuySeedInputs">
     <div class="input-label">🛒 Seeds to Buy (1,3,5...):</div>
-    <input type="text" id="seedBuyInput" placeholder="Ví dụ: 1,3,5" />
+    <input type="text" id="seedBuyInput" placeholder="Ví dụ: 1,2,3,4,5" />
   </div>
 
   <button class="button toggle-btn off" id="toggle3">🍳 Auto Cook: OFF</button>
   
   <div class="input-container" id="autoCookInputs">
     <div class="input-label">🍳 Dish Number (1-17):</div>
-    <input type="number" id="dishNumberInput" placeholder="Chọn món ăn" min="1" max="20" value="1" />
+    <input type="number" id="dishNumberInput" placeholder="Chọn món ăn" min="0" max="20" value="0" />
   </div>
 
   <button class="button toggle-btn off" id="toggle4">🪓 Auto Chop: OFF</button>
@@ -289,9 +348,9 @@
   <div class="input-container" style="display: block;">
     <div class="input-label">⏱️ Delay giữa các chu kỳ (phút:giây):</div>
     <div style="display: flex; align-items: center; justify-content: center;">
-      <input type="number" id="delayMinutes" min="0" max="59" value="1" style="width: 50px;" />
+      <input type="number" id="delayMinutes" min="0" max="59" value="0" style="width: 50px;" />
       <span class="colon-separator">:</span>
-      <input type="number" id="delaySeconds" min="0" max="59" value="30" style="width: 50px;" />
+      <input type="number" id="delaySeconds" min="0" max="59" value="10" style="width: 50px;" />
     </div>
   </div>
 
@@ -301,8 +360,9 @@
   </div>
 
   <div class="footer">🐰🐰🐰MADE BY DAVA🐰🐰🐰</div>
-  
+
   <!-- Load scripts in correct order -->
+  <script src="main.js"></script>
   <script src="popup.js"></script>
   <script src="function.js"></script>
   <script type="module" src="controller.js"></script>
