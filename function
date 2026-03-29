@@ -271,17 +271,15 @@ async function selectSeed(seedOrder) {
     cropImage.click();
     console.log(`✅ Đã chọn hạt giống số ${seedIndex} (stock: ${stockValue})`);
 
-    // setTimeout(() => {
-    //   const closeButton = document.querySelector(
-    //     "img[src='https://sunflower-land.com/game-assets/icons/close.png']"
-    //   );
-    //   if (closeButton) {
-    //     closeButton.click();
-    //     console.log("❌ Đã đóng Market");
-    //   }
-    // }, 500);
-
-    await closeMenu();
+    setTimeout(() => {
+      const closeButton = document.querySelector(
+        "img[src='https://sunflower-land.com/game-assets/icons/close.png']"
+      );
+      if (closeButton) {
+        closeButton.click();
+        console.log("❌ Đã đóng Market");
+      }
+    }, 500);
 
     await randomDelayBetweenFunctions();
     return;
@@ -832,7 +830,11 @@ function getCurrentStock() {
 async function handleBuySeed(seedBuy) {
   console.log("🛒 Đang tìm Market...");
 
-  const marketImage = findMarketImage();
+  const marketImage = document.querySelector("img[src*='market.webp']");
+  if (!marketImage) {
+    console.log("❌ Không tìm thấy Market, dừng lại!");
+    return;
+  }
 
   marketImage.click();
   console.log("✅ Đã click vào Market");
@@ -954,38 +956,6 @@ const toolNameToIndex = Object.fromEntries(
   Object.entries(toolIndexMap).map(([index, name]) => [name, parseInt(index)])
 );
 
-async function waitForStockLoad(toolElement, maxRetries = 5) {
-  for (let i = 0; i < maxRetries; i++) {
-    console.log(`🔄 Đợi stock load... (lần ${i + 1}/${maxRetries})`);
-    await new Promise(r => setTimeout(r, 800));
-    
-    // Kiểm tra sold out trước
-    if (isSoldOutVisible()) {
-      console.log("🛑 Phát hiện sold out trong lúc chờ stock load");
-      return { stockValue: 0, isSoldOut: true };
-    }
-    
-    // Kiểm tra stock full
-    if (isStockFull()) {
-      console.log("🛑 Phát hiện stock full trong lúc chờ stock load");
-      return { stockValue: 999, isStockFull: true }; // Return high number to indicate full
-    }
-    
-    const stockDiv = toolElement.querySelector(
-      ".w-fit.justify-center.flex.items-center.text-xs"
-    );
-    const stockText = stockDiv?.textContent?.trim() || "0";
-    const match = stockText.match(/(\d+)/);
-    const stockValue = match ? parseInt(match[1]) : 0;
-    
-    // Nếu tìm thấy số > 0 hoặc đã thử hết lần, return
-    if (stockValue > 0 || i === maxRetries - 1) {
-      return { stockValue, isSoldOut: false, isStockFull: false };
-    }
-  }
-  return { stockValue: 0, isSoldOut: false, isStockFull: false };
-}
-
 async function checkAndBuyTool(toolType, neededTools) {
   console.log(`🔍 Kiểm tra số ${toolType} trong Market...`);
 
@@ -996,7 +966,7 @@ async function checkAndBuyTool(toolType, neededTools) {
   }
 
   try {
-    // Bước 1: Mở Market
+    // Bước 1: Mở Market bằng cách click vào ảnh "workbench.png"
     console.log("📂 Đang mở Market...");
     const workbenchImg = document.querySelector("img[src*='workbench.png']");
     if (!workbenchImg) {
@@ -1006,39 +976,44 @@ async function checkAndBuyTool(toolType, neededTools) {
 
     workbenchImg.click();
     console.log("✅ Đã click vào Workbench.");
-    await new Promise(r => setTimeout(r, 1500)); // Chờ Market load
+    await new Promise(r => setTimeout(r, 1000));
 
-    // Bước 2: Chọn tool
+    // Bước 2: Chọn tool bằng index trong UI
     const toolElements = document.querySelectorAll(".flex.sm\\:flex-row.flex-col-reverse .w-full .relative .cursor-pointer");
     if (toolElements.length < toolIndex) {
       console.log(`❌ Không tìm thấy tool với index ${toolIndex}`);
-      await closeMenu();
       return false;
     }
 
     const toolElement = toolElements[toolIndex - 1];
     toolElement.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     console.log(`🛠️ Đã chọn tool thứ ${toolIndex}`);
-    await new Promise(r => setTimeout(r, 1000)); // Chờ UI cập nhật
 
-    // Bước 3: Kiểm tra trạng thái và stock với retry logic
-    const stockResult = await waitForStockLoad(toolElement);
-    
-    // Xử lý kết quả kiểm tra
-    if (stockResult.isSoldOut) {
-      console.log(`🛑 ${toolType} đã Sold Out.`);
+
+    // Bước 3: Kiểm tra stock
+    let stockDiv = toolElement.querySelector(
+      ".w-fit.justify-center.flex.items-center.text-xs"
+    );
+    let stockText = stockDiv?.textContent?.trim() || "0";
+    let match = stockText.match(/(\d+)/);
+    let stockValue = match ? parseInt(match[1]) : 0;
+
+  
+  
+    console.log(`🔢 Số lượng ${toolType} hiện có: ${stockValue}, cần: ${neededTools}`);
+
+    // Kiểm tra Sold Out ngay sau khi click
+    if (isSoldOutVisible()) {
+      console.log(`🛑 ${toolType} đã Sold Out từ đầu.`);
       await closeMenu();
       return false;
     }
 
-    if (stockResult.isStockFull) {
-      console.log(`🛑 ${toolType} đã đầy kho (màu đỏ), không cần mua thêm.`);
+    if (isStockFull()) {
+      console.log(`🛑 ${toolType} đã đầy kho, không cần mua thêm.`);
       await closeMenu();
       return true;
     }
-
-    const stockValue = stockResult.stockValue;
-    console.log(`🔢 Số lượng ${toolType} hiện có: ${stockValue}, cần: ${neededTools}`);
 
     if (stockValue >= neededTools) {
       console.log(`✅ Số ${toolType} hiện có đủ.`);
@@ -1047,12 +1022,21 @@ async function checkAndBuyTool(toolType, neededTools) {
     }
 
     // Bước 4: Mua tool
-    const toolsToBuy = neededTools - stockValue;
-    console.log(`🛒 Cần mua thêm ${toolsToBuy} ${toolType}...`);
-    const success = await buyTool(toolType, toolsToBuy);
-    
-    await closeMenu();
-    return success;
+      const currentTools = stockValue;
+      if (currentTools === null) {
+        console.log("❌ Không thể xác định số lượng rìu trong Market.");
+        await closeMenu();
+        return false;
+      }
+
+
+      // Bước 3: Mua rìu còn thiếu
+      const ToolsToBuy = neededTools - currentTools;
+      console.log(`🛒 Cần mua thêm ${ToolsToBuy} rìu...`);
+      const success = await buyTool(toolType, ToolsToBuy);
+      
+      await closeMenu();
+      return success;
 
   } catch (error) {
     console.error(`❌ Lỗi trong quá trình kiểm tra/mua ${toolType}:`, error);
@@ -1060,6 +1044,7 @@ async function checkAndBuyTool(toolType, neededTools) {
     return false;
   }
 }
+
 
 // Hàm mua tool
 async function buyTool(toolType, quantity) {
@@ -1193,75 +1178,29 @@ async function safeClickButtonCraft(button, description = "button") {
   }
 }
 
-// Hàm đóng menu được cải thiện
+// Hàm đóng menu
 async function closeMenu() {
   try {
-    console.log("🔄 Đang đóng Market...");
+    // Tìm nút close hoặc click ra ngoài
+    const closeButton = document.querySelector("button[aria-label='close']") ||
+                      document.querySelector("button:has(svg)") ||
+                      document.querySelector(".close-button");
     
-    // Thử nhiều cách đóng menu
-    const closeMethods = [
-      () => {
-        const closeButton = document.querySelector("button[aria-label='close']");
-        if (closeButton) {
-          closeButton.click();
-          return true;
-        }
-        return false;
-      },
-      () => {
-        const closeButton = document.querySelector("button:has(svg)");
-        if (closeButton) {
-          closeButton.click();
-          return true;
-        }
-        return false;
-      },
-      () => {
-        // Tìm nút X
-        const buttons = Array.from(document.querySelectorAll("button"));
-        const xButton = buttons.find(btn => {
-          const text = btn.textContent.trim();
-          return text === "×" || text === "X" || text.includes("Close");
-        });
-        if (xButton) {
-          xButton.click();
-          console.log("❌ Đóng menu bằng cách bấm vào nút X");
-          return true;
-        }
-        return false;
-      },
-      () => {
-        // Click vào backdrop
-        const backdrop = document.querySelector(".fixed.inset-0");
-        if (backdrop) {
-          backdrop.click();
-          return true;
-        }
-        return false;
-      },
-      () => {
-        // ESC key
-        document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}));
-        return true;
-      }
-    ];
-
-    for (const method of closeMethods) {
-      if (method()) {
-        await new Promise(r => setTimeout(r, 1000));
-        console.log("✅ Đã đóng Market.");
-        return;
-      }
+    if (closeButton) {
+      closeButton.click();
+    } else {
+      // Click ra ngoài để đóng menu
+      document.body.click();
     }
     
-    console.log("⚠️ Không thể đóng menu bằng cách thông thường.");
-    
+    await new Promise(r => setTimeout(r, 1000));
+    console.log("✅ Đã đóng Market.");
   } catch (error) {
     console.error("❌ Lỗi khi đóng menu:", error);
   }
 }
 
-// Wrapper functions cho từng loại tool
+// Wrapper functions cho từng loại tool để dễ sử dụng
 async function checkAndBuyAxes(neededAxes) {
   return await checkAndBuyTool('axe', neededAxes);
 }
@@ -1282,7 +1221,9 @@ async function checkAndBuyGoldPickaxes(neededPickaxes) {
   return await checkAndBuyTool('gold_pickaxe', neededPickaxes);
 }
 
-// Hàm helper để kiểm tra xem img có phải là cây không (hỗ trợ tất cả mùa)
+
+  
+ // Hàm helper để kiểm tra xem img có phải là cây không (hỗ trợ tất cả mùa)
 function isTreeImage(imgSrc) {
   if (!imgSrc) return false;
   
@@ -1305,23 +1246,17 @@ function getSeasonFromTreeSrc(treeSrc) {
   return 'unknown';
 }
 
-// Hàm tìm tất cả cây hiện có trên màn hình - ĐƯỢC CẢI THIỆN
+// Hàm tìm tất cả cây hiện có trên màn hình
 function findAllTrees() {
   const trees = Array.from(document.querySelectorAll("img"))
     .filter(img => {
       const src = img.src || img.getAttribute('src') || '';
       return isTreeImage(src);
-    })
-    .map(tree => ({
-      element: tree,
-      src: tree.src || tree.getAttribute('src') || '',
-      id: tree.id || `tree_${Date.now()}_${Math.random()}`, // Tạo ID unique
-      rect: tree.getBoundingClientRect() // Lưu vị trí để tracking
-    }));
+    });
   return trees;
-}
+}s
 
-// Cập nhật hàm handleTreeChop để sử dụng object thay vì DOM element trực tiếp
+// Cập nhật hàm handleTreeChop để sử dụng findAllTrees
 async function handleTreeChop() {
   console.log("🌲 Bắt đầu chặt cây (hỗ trợ tất cả mùa)...");
 
@@ -1352,28 +1287,30 @@ async function handleTreeChop() {
 
     // Chặt từng cây
     for (let i = 0; i < trees.length; i++) {
-      const treeData = trees[i];
+      const tree = trees[i];
       
-      // Tìm lại element dựa trên src và vị trí
-      const currentTree = findTreeByData(treeData);
-      if (!currentTree) {
+      // Kiểm tra cây vẫn tồn tại
+      if (!document.body.contains(tree)) {
         console.log(`⚠️ Cây thứ ${i + 1} đã biến mất, bỏ qua.`);
         continue;
       }
 
-      // Xác định loại cây
-      const fileName = treeData.src.split('/').pop() || '';
+      // Xác định loại cây ĐÚNG CÁCH
+      const treeSrc = tree.src || tree.getAttribute('src') || '';
+      const fileName = treeSrc.split('/').pop() || '';
       const season = getSeasonFromTreeSrc(fileName);
 
       console.log(`🪓 Chặt cây thứ ${i + 1}/${trees.length} (mùa ${season})...`);
       
-      const success = await chopSingleTree(currentTree, i + 1, season);
+      const success = await chopSingleTree(tree, i + 1, season);
       if (!success) {
         console.log(`❌ Không thể chặt cây thứ ${i + 1}`);
       }
 
-      // Xử lý menu (nếu có)
-      const fixedContainer = document.querySelector(".fixed.inset-0.overflow-y-auto");
+      //Xử lý menu
+      const fixedContainer = document.querySelector(
+      ".fixed.inset-0.overflow-y-auto"
+    );
       if (fixedContainer) {
         console.log("🔄 Phát hiện menu đặc biệt, xử lý tiếp...");
         await handleFixedElement();
@@ -1393,33 +1330,7 @@ async function handleTreeChop() {
   console.log("🏁 Hoàn thành quá trình chặt cây!");
 }
 
-// Hàm tìm lại cây dựa trên dữ liệu đã lưu
-function findTreeByData(treeData) {
-  // Thử tìm theo src trước
-  const treesBySrc = Array.from(document.querySelectorAll("img"))
-    .filter(img => {
-      const src = img.src || img.getAttribute('src') || '';
-      return src === treeData.src;
-    });
-
-  if (treesBySrc.length === 1) {
-    return treesBySrc[0];
-  }
-
-  // Nếu có nhiều cây cùng src, tìm theo vị trí
-  if (treesBySrc.length > 1) {
-    return treesBySrc.find(tree => {
-      const rect = tree.getBoundingClientRect();
-      const deltaX = Math.abs(rect.x - treeData.rect.x);
-      const deltaY = Math.abs(rect.y - treeData.rect.y);
-      return deltaX < 10 && deltaY < 10; // Tolerance 10px
-    });
-  }
-
-  return null;
-}
-
-// Cập nhật hàm chopSingleTree
+// Cập nhật hàm chopSingleTree để xử lý tất cả mùa
 async function chopSingleTree(treeElement, treeNumber, season) {
   try {
     console.log(`  🌳 Bắt đầu chặt cây số ${treeNumber} mùa ${season}`);
@@ -1439,36 +1350,44 @@ async function chopSingleTree(treeElement, treeNumber, season) {
       return false;
     }
     
-    // Click lần 2
+    // Click lần 2 vào cây shake
     console.log(`    🪓 Click lần 2/4 vào cây mùa ${season}...`);
     currentTree.click();
+    
+    // Chờ 200ms
     await new Promise(resolve => setTimeout(resolve, 200));
     
     // Tìm lại cây shake cho lần click 3
     currentTree = findShakeTree(season);
+    
     if (!currentTree) {
       console.log(`    ✅ Cây mùa ${season} đã được chặt xong sau 2 lần click!`);
       return true;
     }
 
-    // Click lần 3
+    // Click lần 3 vào cây shake
     console.log(`    🪓 Click lần 3/4 vào cây mùa ${season}...`);
     currentTree.click();
+    
+    // Chờ 200ms
     await new Promise(resolve => setTimeout(resolve, 200));
     
-    // Tìm lại cây shake cho lần click 4
+    // Tìm lại cây shake cho lần click 2
     currentTree = findShakeTree(season);
+    
     if (!currentTree) {
       console.log(`    ✅ Cây mùa ${season} đã được chặt xong sau 3 lần click!`);
       return true;
     }
     
-    // Click lần 4
+    // Click lần 3 vào cây shake
     console.log(`    🪓 Click lần 4/4 vào cây mùa ${season}...`);
     currentTree.click();
     
-    // Chờ animation hoàn thành
+    
+    // Chờ animation hoàn thành sau lần click cuối (400ms để đảm bảo)
     await new Promise(resolve => setTimeout(resolve, 700));
+
     
     // Kiểm tra cây shake đã bị xóa chưa
     const finalTree = findShakeTree(season);
@@ -1477,9 +1396,13 @@ async function chopSingleTree(treeElement, treeNumber, season) {
       console.log(`    ✅ Cây số ${treeNumber} mùa ${season} đã bị chặt thành công!`);
       return true;
     } else {
-      console.log(`    ⚠️ Cây số ${treeNumber} mùa ${season} vẫn còn chưa chặt xong sau 4 lần click.`);
+      console.log(`    ⚠️ Cây số ${treeNumber} mùa ${season} vẫn còn chưa chặt xong sau 3 lần click.`);
       return false;
     }
+
+
+    
+
 
   } catch (error) {
     console.error(`    ❌ Lỗi khi chặt cây số ${treeNumber}:`, error);

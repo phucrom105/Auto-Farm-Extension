@@ -1,0 +1,1919 @@
+#include "MenuManager.h"
+#include <iostream>
+#include <fstream>
+#include <algorithm>
+#include <cmath>
+#include "nlohmann/json.hpp" 
+#include "SoundManager.h"
+
+using json = nlohmann::json;
+const int MenuManager::BASE_EXP_PER_LEVEL = 100;
+const float MenuManager::EXP_SCALING_FACTOR = 1.2f;
+
+const sf::Color MenuManager::BUTTON_NORMAL_COLOR = sf::Color(70, 54, 62, 220);  // Dark wood tone
+const sf::Color MenuManager::BUTTON_HOVER_COLOR = sf::Color(212, 175, 55, 240);  // Golden glow
+const sf::Color MenuManager::BUTTON_PRESSED_COLOR = sf::Color(50, 40, 45, 220);  // Pressed dark wood
+const sf::Color MenuManager::BACKGROUND_OVERLAY_COLOR = sf::Color(46, 42, 38, 180);  // Ancient stone overlay
+const sf::Color MenuManager::BUTTON_GRADIENT_START = sf::Color(70, 54, 62, 220);
+const sf::Color MenuManager::BUTTON_GRADIENT_END = sf::Color(85, 65, 75, 220);
+const sf::Color MenuManager::BUTTON_HOVER_GRADIENT_START = sf::Color(212, 175, 55, 240);
+const sf::Color MenuManager::BUTTON_HOVER_GRADIENT_END = sf::Color(255, 200, 80, 240);
+const sf::Color MenuManager::INPUT_BOX_BORDER_COLOR = sf::Color(212, 175, 55, 255);  // Gold border
+const sf::Color MenuManager::INPUT_BOX_FOCUS_COLOR = sf::Color(255, 215, 0, 255);    // Bright gold focus
+const sf::Color MenuManager::TEXT_COLOR = sf::Color(255, 253, 240, 255);  // Ivory white
+const sf::Color MenuManager::SLIDER_HANDLE_COLOR = sf::Color(212, 175, 55, 255);
+const sf::Color MenuManager::SLIDER_HANDLE_HOVER_COLOR = sf::Color(255, 200, 80, 255);
+const sf::Color MenuManager::SLIDER_TRACK_COLOR = sf::Color(70, 54, 62, 255);
+const sf::Color MenuManager::TAB_ACTIVE_COLOR = sf::Color(255, 253, 240, 255);
+const sf::Color MenuManager::TAB_INACTIVE_COLOR = sf::Color(150, 140, 130, 255);
+const sf::Color MenuManager::TAB_UNDERLINE_COLOR = sf::Color(212, 175, 55, 255);
+const sf::Color MenuManager::DELETE_BUTTON_COLOR = sf::Color(139, 69, 19, 220);      // Dark red-brown
+const sf::Color MenuManager::DELETE_BUTTON_HOVER_COLOR = sf::Color(220, 20, 60, 220); // Crimson red
+
+// Medieval decorative colors
+const sf::Color MEDIEVAL_STONE_DARK = sf::Color(46, 42, 38, 255);
+const sf::Color MEDIEVAL_STONE_LIGHT = sf::Color(80, 75, 70, 255);
+const sf::Color MEDIEVAL_GOLD = sf::Color(212, 175, 55, 255);
+const sf::Color MEDIEVAL_GOLD_BRIGHT = sf::Color(255, 215, 0, 255);
+const sf::Color MEDIEVAL_IRON = sf::Color(105, 105, 105, 255);
+const sf::Color MEDIEVAL_SHADOW = sf::Color(20, 15, 12, 150);
+const sf::Color MenuManager::MEDIEVAL_WOOD_DARK = sf::Color(59, 47, 47, 220);      // #3b2f2f
+const sf::Color MenuManager::MEDIEVAL_WOOD_LIGHT = sf::Color(90, 59, 29, 220);     // #5a3b1d  
+const sf::Color MenuManager::MEDIEVAL_STONE_BASE = sf::Color(68, 68, 68, 220);     // #444
+const sf::Color MenuManager::MEDIEVAL_GOLD_FRAME = sf::Color(212, 175, 55, 255);   // #d4af37
+const sf::Color MenuManager::MEDIEVAL_SILVER_FRAME = sf::Color(196, 196, 196, 255); // #c4c4c4
+const sf::Color MenuManager::MEDIEVAL_FIRE_GLOW = sf::Color(255, 170, 0, 180);     // #ffaa00
+const sf::Color MenuManager::MEDIEVAL_MAGIC_GLOW = sf::Color(102, 224, 255, 180);  // #66e0ff
+const sf::Color MenuManager::MEDIEVAL_TEXT_GOLD = sf::Color(252, 234, 187, 255);   // #fceabb
+const sf::Color MenuManager::MEDIEVAL_RIVET_COLOR = sf::Color(105, 105, 105, 255); // Bạc sắt
+
+const std::string MenuManager::SETTINGS_FILE_PATH = "settings.json";
+const std::string MenuManager::PROFILES_FILE_PATH = "profiles.json";
+const int MenuManager::MAX_PROFILES = 5;
+const float MenuManager::RESOLUTION_SCROLL_SPEED = 50.0f;
+const int MenuManager::MAX_VISIBLE_RESOLUTIONS = 5;
+
+MenuManager::MenuManager()
+    : m_currentState(MenuState::ProfileMenu)
+    , m_previousState(MenuState::ProfileMenu)
+    , m_currentProfile(nullptr)
+    , m_guestProfile(false)
+    , m_waitingForNameInput(false)
+    , m_showWarning(false)
+    , m_warningTimer(0.0f)
+    , m_gamePaused(false)
+    , m_gameOver(false)
+    , m_gameWon(false)
+    , m_currentMap(0)
+    , m_selectedResolutionIndex(0)
+    , m_resolutionDropdownOpen(false)
+    , m_resolutionScrollOffset(0.0f)
+    , m_maxResolutionScroll(0.0f)
+{
+
+    if (m_availableResolutions.empty()) {
+        m_availableResolutions = {
+            {1920, 1080},
+            {1680, 1050},
+            {1600, 900},
+            {1366, 768},
+            {1280, 720},
+            {1024, 768},
+            {800, 600},
+            {640, 480}
+        };
+    }
+
+    std::sort(m_availableResolutions.begin(), m_availableResolutions.end(),
+        [](const sf::Vector2u& a, const sf::Vector2u& b) {
+            if (a.x != b.x) return a.x > b.x;
+            return a.y > b.y;
+        });
+}
+
+
+MenuManager::~MenuManager() {
+}
+
+void MenuManager::Initialize(sf::RenderWindow& window) {
+    m_windowSize = sf::Vector2f(window.getSize());
+    LoadResources();
+    LoadProfilesFromFile();
+    LoadSettingsFromFile();
+    SetMenuState(MenuState::ProfileMenu);
+
+
+    m_ambientSoundsPlaying = false;
+    m_gameOverSoundPlaying = false;
+    m_gameWonSoundPlaying = false;
+    m_gamePaused = false;
+    m_gameOver = false;
+    m_gameWon = false;
+
+    // Ensure selected resolution is valid
+    bool validResolution = false;
+    for (size_t i = 0; i < m_availableResolutions.size(); ++i) {
+        if (m_availableResolutions[i] == m_settings.resolution) {
+            m_selectedResolutionIndex = i;
+            validResolution = true;
+            break;
+        }
+    }
+    if (!validResolution) {
+        m_settings.resolution = m_availableResolutions[0];
+        m_selectedResolutionIndex = 0;
+        ApplyResolution(window);
+    }
+}
+
+
+
+void MenuManager::LoadResources() {
+    if (!m_font.loadFromFile("Fonts/Luminari-Regular.ttf")) {
+        std::cerr << "Warning: Could not load font. Using default font." << std::endl;
+    }
+    //Background
+    if (!m_backgroundTexture.loadFromFile("image/menu/Background.jpg")) {
+        CreateGradientBackground();
+    }
+    else {
+        m_backgroundSprite.setTexture(m_backgroundTexture);
+        sf::Vector2u textureSize = m_backgroundTexture.getSize();
+        sf::Vector2f scale(
+            m_windowSize.x / static_cast<float>(textureSize.x),
+            m_windowSize.y / static_cast<float>(textureSize.y)
+        );
+        m_backgroundSprite.setScale(scale);
+        m_backgroundSprite.setColor(sf::Color(255, 255, 255, 180));
+    }
+
+    //Pause menu background
+    if (!m_dragonHeadTexture.loadFromFile("image/menu/dragon_head.png")) {
+        std::cerr << "Warning: Could not load dragon head texture" << std::endl;
+    }
+
+    if (!m_warriorTexture.loadFromFile("image/menu/warrior.png")) {
+        std::cerr << "Warning: Could not load warrior leaves texture" << std::endl;
+    }
+
+    if (!m_shieldSwordTexture.loadFromFile("image/menu/shield_sword.png")) {
+        std::cerr << "Warning: Could not load shield sword texture" << std::endl;
+    }
+
+    m_PlayerTextManager.Initialize(m_font);
+
+    m_titleText.setFont(m_font);
+    m_titleText.setCharacterSize(56);
+    m_titleText.setFillColor(sf::Color::White);
+    m_titleText.setStyle(sf::Text::Bold);
+
+    m_titleShadow.setFont(m_font);
+    m_titleShadow.setCharacterSize(56);
+    m_titleShadow.setFillColor(sf::Color(0, 0, 0, 120));
+    m_titleShadow.setStyle(sf::Text::Bold);
+
+    m_warningText.setFont(m_font);
+    m_warningText.setCharacterSize(24);
+    m_warningText.setFillColor(sf::Color(255, 100, 100, 255));
+    m_warningText.setStyle(sf::Text::Bold);
+
+    m_inputPromptText.setFont(m_font);
+    m_inputPromptText.setCharacterSize(36);
+    m_inputPromptText.setFillColor(sf::Color::White);
+    m_inputPromptText.setStyle(sf::Text::Bold);
+    m_inputPromptText.setString("Enter your name:");
+
+    m_inputText.setFont(m_font);
+    m_inputText.setCharacterSize(28);
+    m_inputText.setFillColor(sf::Color(20, 20, 20, 255));
+
+    m_inputBox.setSize(sf::Vector2f(450, 60));
+    m_inputBox.setFillColor(sf::Color(245, 245, 245, 250));
+    m_inputBox.setOutlineThickness(3);
+    m_inputBox.setOutlineColor(INPUT_BOX_BORDER_COLOR);
+
+    m_inputBoxGlow.setSize(sf::Vector2f(460, 70));
+    m_inputBoxGlow.setFillColor(sf::Color(120, 120, 255, 30));
+    m_inputBoxGlow.setOutlineThickness(0);
+
+    m_pauseBackground.setSize(sf::Vector2f(600, 500));
+    m_pauseBackground.setFillColor(sf::Color(15, 15, 25, 200));
+    m_pauseBackground.setOutlineThickness(2);
+    m_pauseBackground.setOutlineColor(sf::Color(120, 120, 255, 180));
+
+    m_gameOverBackground.setSize(sf::Vector2f(450, 450));
+    m_gameOverBackground.setFillColor(sf::Color(15, 15, 25, 200));
+    m_gameOverBackground.setOutlineThickness(2);
+    m_gameOverBackground.setOutlineColor(sf::Color(120, 120, 255, 180));
+
+    m_gameWonBackground.setSize(sf::Vector2f(450, 450));
+    m_gameWonBackground.setFillColor(sf::Color(15, 15, 25, 200));
+    m_gameWonBackground.setOutlineThickness(2);
+    m_gameWonBackground.setOutlineColor(sf::Color(120, 120, 255, 180));
+
+    m_backgroundOverlay.setSize(m_windowSize);
+    m_backgroundOverlay.setFillColor(BACKGROUND_OVERLAY_COLOR);
+
+}
+
+void MenuManager::Update(sf::RenderWindow& window, float deltaTime) {
+    UpdateButtons(window);
+    UpdateSliders(window);
+
+    bool shouldUpdateExpBar = (m_currentState == MenuState::MainMenu ||
+        m_currentState == MenuState::PlayMenu ||
+        m_currentState == MenuState::DifficultyMenu);
+
+    if (shouldUpdateExpBar && m_currentProfile) {
+        m_PlayerTextManager.UpdateTopRightExpBar(window.getSize());
+    }
+
+    if (m_ambientSoundsPlaying) {
+        SoundManager::getInstance().UpdateAmbientSound();
+    }
+
+    if (m_currentState == MenuState::Settings) {
+        UpdateTabButtons(window);
+    }
+
+    if (m_currentState == MenuState::Settings && m_resolutionDropdownOpen) {
+        UpdateResolutionScroll(deltaTime);
+    }
+
+    if (m_showWarning) {
+        m_warningTimer -= deltaTime;
+        if (m_warningTimer <= 0.0f) {
+            m_showWarning = false;
+        }
+    }
+
+}
+
+
+
+void MenuManager::Draw(sf::RenderWindow& window) {
+    if (m_backgroundTexture.getSize().x > 0 && !m_gamePaused && !m_gameOver && !m_gameWon) {
+        window.draw(m_backgroundSprite);
+    }
+
+    if (m_currentState != MenuState::GamePlay || m_gamePaused || m_gameOver || m_gameWon) {
+        window.draw(m_backgroundOverlay);
+    }
+
+    DrawBackgroundParticles(window);
+
+    if (m_currentState != MenuState::GamePlay || m_gamePaused || m_gameOver || m_gameWon) {
+        window.draw(m_titleShadow);
+        window.draw(m_titleText);
+    }
+
+
+    if (m_currentState == MenuState::Settings) {
+        DrawTabButtons(window);
+    }
+
+    DrawButtons(window);
+    DrawSliders(window);
+
+    if (m_resolutionDropdownOpen && m_currentState == MenuState::Settings &&
+        m_currentSettingsTab == SettingsTab::Configuration) {
+        DrawResolutionDropdown(window);
+    }
+
+    if (m_waitingForNameInput) {
+        window.draw(m_inputBoxGlow);
+        window.draw(m_inputBox);
+        window.draw(m_inputPromptText);
+        window.draw(m_inputText);
+
+        DrawInputCursor(window);
+    }
+
+    if (m_showWarning) {
+        DrawWarningWithBackground(window);
+    }
+
+
+    if (m_gameOver && m_currentState == MenuState::GamePlay) {
+        DrawGameOverMenu(window);
+        return;
+    }
+
+    if (m_gameWon && m_currentState == MenuState::GamePlay) {
+        DrawGameWonMenu(window);
+        return;
+    }
+
+    if (m_gamePaused && m_currentState == MenuState::GamePlay) {
+        DrawPauseMenu(window);
+        return;
+    }
+
+}
+
+
+void MenuManager::HandleInput(sf::Event& event, sf::RenderWindow& window) {
+    if (event.type == sf::Event::MouseButtonPressed) {
+        if (event.mouseButton.button == sf::Mouse::Left) {
+            sf::Vector2f mousePos(event.mouseButton.x, event.mouseButton.y);
+
+            // Handle game over menu buttons if game is over
+            if (m_gameOver && m_currentState == MenuState::GamePlay) {
+                for (auto& button : m_gameOverButtons) {
+                    if (button.isVisible && IsMouseOverButton(button, mousePos)) {
+                        button.state = ButtonState::Pressed;
+                        if (button.callback) {
+                            button.callback(window);
+                        }
+                        return;
+                    }
+                }
+                return;
+            }
+
+            if (m_gameWon && m_currentState == MenuState::GamePlay) {
+                for (auto& button : m_gameWonButtons) {
+                    if (button.isVisible && IsMouseOverButton(button, mousePos)) {
+                        button.state = ButtonState::Pressed;
+                        if (button.callback) {
+                            button.callback(window);
+                        }
+                        return;
+                    }
+                }
+                return;
+            }
+
+            if (m_gamePaused && m_currentState == MenuState::GamePlay) {
+                for (auto& button : m_pauseButtons) {
+                    if (button.isVisible && IsMouseOverButton(button, mousePos)) {
+                        button.state = ButtonState::Pressed;
+                        if (button.callback) {
+                            button.callback(window);
+                        }
+                        return; // Dừng xử lý sau khi click pause button
+                    }
+                }
+                return; // Nếu đang pause, không xử lý input khác
+            }
+
+            // Prioritize sliders
+            for (auto& slider : m_sliders) {
+                if (slider.isVisible && IsMouseOverSlider(slider, mousePos)) {
+                    slider.isDragging = true;
+                    UpdateSliderValue(slider, mousePos);
+                    return;
+                }
+            }
+
+            if (event.type == sf::Event::MouseWheelScrolled) {
+                if (m_currentState == MenuState::Settings && m_resolutionDropdownOpen) {
+                    float scrollDelta = event.mouseWheelScroll.delta * RESOLUTION_SCROLL_SPEED;
+                    m_resolutionScrollOffset -= scrollDelta;
+                    m_resolutionScrollOffset = std::max(0.0f, std::min(m_resolutionScrollOffset, m_maxResolutionScroll));
+                    UpdateVisibleResolutions();
+                }
+            }
+
+            if (m_currentState == MenuState::Settings) {
+                for (auto& tabButton : m_tabButtons) {
+                    sf::FloatRect textBounds = tabButton.text.getGlobalBounds();
+                    if (textBounds.contains(mousePos)) {
+                        if (tabButton.callback) {
+                            tabButton.callback();
+                        }
+                        return;
+                    }
+                }
+            }
+
+            if (m_gamePaused && m_currentState == MenuState::GamePlay) {
+                for (auto& button : m_pauseButtons) {
+                    if (button.isVisible && IsMouseOverButton(button, mousePos)) {
+                        button.state = ButtonState::Pressed;
+                        if (button.callback) {
+                            button.callback(window);
+                        }
+                        break;
+                    }
+                }
+            }
+            else {
+                if (m_resolutionDropdownOpen) {
+                    HandleResolutionDropdownClick(mousePos, window);
+                }
+                else {
+                    for (auto& button : m_buttons) {
+                        if (button.isVisible && IsMouseOverButton(button, mousePos)) {
+                            button.state = ButtonState::Pressed;
+                            if (button.callback) {
+                                button.callback(window);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+    // Handle mouse wheel scrolling for resolution dropdown
+    if (event.type == sf::Event::MouseWheelScrolled) {
+        if (m_resolutionDropdownOpen && m_currentState == MenuState::Settings &&
+            m_currentSettingsTab == SettingsTab::Configuration) {
+
+            sf::Vector2f dropdownPos = sf::Vector2f(
+                (m_windowSize.x - 300) / 2,
+                m_resolutionButton.shape.getPosition().y + BUTTON_HEIGHT + 5
+            );
+            sf::FloatRect dropdownArea(dropdownPos.x, dropdownPos.y, 300, 5 * BUTTON_HEIGHT);
+
+            if (dropdownArea.contains(sf::Vector2f(sf::Mouse::getPosition(window)))) {
+                float scrollDelta = -event.mouseWheelScroll.delta * RESOLUTION_SCROLL_SPEED;
+                m_resolutionScrollOffset += scrollDelta;
+
+                // Clamp scroll offset
+                int maxScroll = std::max(0, (int)m_availableResolutions.size() - 5);
+                m_resolutionScrollOffset = std::max(0.0f,
+                    std::min(m_resolutionScrollOffset, static_cast<float>(maxScroll * BUTTON_HEIGHT)));
+                UpdateVisibleResolutions();
+            }
+        }
+    }
+
+    if (event.type == sf::Event::MouseButtonReleased) {
+        if (event.mouseButton.button == sf::Mouse::Left) {
+            for (auto& slider : m_sliders) {
+                slider.isDragging = false;
+            }
+        }
+    }
+
+    if (event.type == sf::Event::MouseMoved) {
+        sf::Vector2f mousePos(event.mouseMove.x, event.mouseMove.y);
+        for (auto& slider : m_sliders) {
+            if (slider.isDragging) {
+                UpdateSliderValue(slider, mousePos);
+            }
+        }
+    }
+
+    if (m_waitingForNameInput && event.type == sf::Event::TextEntered) {
+        HandleTextInput(event.text.unicode);
+    }
+
+    if (event.type == sf::Event::KeyPressed) {
+        if (m_waitingForNameInput && event.key.code == sf::Keyboard::Enter) {
+            if (!m_inputBuffer.empty()) {
+                CreateNewProfile(m_inputBuffer);
+                SetWaitingForInput(false);
+                ClearInputText();
+                SetMenuState(MenuState::MainMenu);
+            }
+            else {
+                ShowWarningMessage("Please enter a name!");
+            }
+        }
+        else if (event.key.code == sf::Keyboard::Escape) {
+
+            if (m_waitingForNameInput) {
+                SetWaitingForInput(false);
+                ClearInputText();
+                SetMenuState(MenuState::ProfileMenu);
+            }
+            else {
+                if (m_resolutionDropdownOpen) {
+                    m_resolutionDropdownOpen = false;
+                }
+                else {
+                    switch (m_currentState) {
+                    case MenuState::ProfileMenu:
+                        std::cout << "Exit game requested" << std::endl;
+                        break;
+                    case MenuState::CreateProfile:
+                        SetMenuState(MenuState::ProfileMenu);
+                        break;
+                    case MenuState::ChooseProfile:
+                        SetMenuState(MenuState::ProfileMenu);
+                        break;
+                    case MenuState::MainMenu:
+                        if (m_currentProfile) {
+                            m_PlayerTextManager.Draw(window);
+                        }
+                        SetMenuState(MenuState::ProfileMenu);
+                        break;
+                    case MenuState::PlayMenu:
+                        if (m_currentProfile) {
+                            m_PlayerTextManager.Draw(window);
+                        }
+                        SetMenuState(MenuState::MainMenu);
+                        break;
+                    case MenuState::DifficultyMenu:
+                        if (m_currentProfile) {
+                            m_PlayerTextManager.Draw(window);
+                        }
+                        SetMenuState(MenuState::PlayMenu);
+                        break;
+                    case MenuState::Settings:
+                        if (m_previousState == MenuState::GamePlay) {
+                            m_currentState = MenuState::GamePlay; // Đặt lại trạng thái thành GamePlay
+                            m_gamePaused = true; // Đảm bảo trạng thái paused
+                            m_buttons.clear(); // Xóa giao diện Settings
+                            m_sliders.clear();
+                            m_resolutionDropdownButtons.clear();
+                            if (m_gameOver) {
+                                // Nếu game over, không tạo pause menu
+                                m_buttons.clear();
+                                m_sliders.clear();
+                                m_resolutionDropdownButtons.clear();
+                                CreateGameOverMenu();
+                            }
+                            else if (m_gameWon) {
+                                m_buttons.clear();
+                                m_sliders.clear();
+                                m_resolutionDropdownButtons.clear();
+                                CreateGameWonMenu();
+                            }
+                            else {
+                                // Nếu không game over, tạo pause menu
+                                m_gamePaused = true;
+                                m_buttons.clear();
+                                m_sliders.clear();
+                                m_resolutionDropdownButtons.clear();
+                                CreatePauseMenu();
+                                SaveSettingsToFile();
+                            }
+                            if (!m_ambientSoundsPlaying) {
+                                SoundManager::getInstance().PauseBackgroundMusic();
+                                SoundManager::getInstance().StartAmbientSoundCycle();
+                                m_ambientSoundsPlaying = true;
+                            }
+
+                            std::cout << "Returning to Pause Menu from Settings" << std::endl;
+                        }
+                        else {
+                            SetMenuState(MenuState::MainMenu);
+                        }
+                        break;
+                    case MenuState::GamePlay:
+                        if (!m_gameOver || !m_gameWon) {
+                            TogglePauseMenu();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+void MenuManager::SetMenuState(MenuState newState) {
+    m_previousState = m_currentState;
+    m_currentState = newState;
+
+    bool shouldShowExpBar = (newState == MenuState::MainMenu ||
+        newState == MenuState::PlayMenu ||
+        newState == MenuState::DifficultyMenu);
+
+    if (shouldShowExpBar && m_currentProfile) {
+        m_PlayerTextManager.SetShowTopRightExpBar(true);
+        m_PlayerTextManager.UpdateExperience(
+            m_currentProfile->currentExperience,
+            m_currentProfile->expToNext,
+            m_currentProfile->currentLevel
+        );
+        m_PlayerTextManager.UpdateCoins(m_currentProfile->coins);
+    }
+    else {
+        m_PlayerTextManager.SetShowTopRightExpBar(false);
+    }
+
+    m_buttons.clear();
+    m_sliders.clear();
+    m_resolutionDropdownButtons.clear();
+    m_resolutionDropdownOpen = false;
+
+    m_titleText.setString("");
+    m_titleShadow.setString("");
+
+    if (newState != MenuState::Settings) {
+        m_tabButtons.clear();
+    }
+
+    if (newState == MenuState::GamePlay && m_gamePaused) {
+        // Khi vào Pause Menu
+        SoundManager::getInstance().PauseBackgroundMusic();
+        SoundManager::getInstance().StartAmbientSoundCycle();
+        m_ambientSoundsPlaying = true;
+    }
+    else if (newState != MenuState::GamePlay && m_ambientSoundsPlaying) {
+        // Khi vào các menu khác
+        SoundManager::getInstance().StopAmbientSounds();
+        SoundManager::getInstance().ResumeBackgroundMusic();
+        m_ambientSoundsPlaying = false;
+    }
+
+    else if (newState != MenuState::GamePlay && m_gameOverSoundPlaying) {
+        SoundManager::getInstance().StopGameOverSound();
+        SoundManager::getInstance().ResumeBackgroundMusic();
+        m_gameOverSoundPlaying = false;
+    }
+
+    else if (newState != MenuState::GamePlay && m_gameWonSoundPlaying) {
+        SoundManager::getInstance().StopGameWonSound();
+        SoundManager::getInstance().ResumeBackgroundMusic();
+        m_gameWonSoundPlaying = false;
+    }
+
+    if (!(newState == MenuState::Settings && m_previousState == MenuState::GamePlay)) {
+        m_gamePaused = false;
+        m_pauseButtons.clear();
+    }
+
+    switch (newState) {
+    case MenuState::ProfileMenu:
+        CreateProfileMenu();
+        break;
+    case MenuState::CreateProfile:
+        CreateNewProfileMenu();
+        break;
+    case MenuState::ChooseProfile:
+        CreateChooseProfileMenu();
+        break;
+    case MenuState::MainMenu:
+        CreateMainMenu();
+        break;
+    case MenuState::PlayMenu:
+        CreatePlayMenu();
+        break;
+    case MenuState::DifficultyMenu:
+        CreateDifficultyMenu();
+        break;
+    case MenuState::Settings:
+        m_currentSettingsTab = SettingsTab::Music;
+        CreateSettingsMenu();
+        break;
+    case MenuState::GamePlay:
+        m_titleText.setString("");
+        m_titleShadow.setString("");
+        if (m_gamePaused) {
+            CreatePauseMenu();
+        }
+
+        if (m_gameOver) {
+            CreateGameOverMenu();
+        }
+
+        if (m_gameWon) {
+            CreateGameWonMenu();
+        }
+        break;
+    }
+}
+
+
+
+
+void MenuManager::UpdateWindowSize(sf::RenderWindow& window) {
+    sf::Vector2f oldWindowSize = m_windowSize;
+    m_windowSize = sf::Vector2f(window.getSize());
+
+    std::cout << "Updating window size to: " << m_windowSize.x << "x" << m_windowSize.y << std::endl;
+    if (oldWindowSize != m_windowSize) {
+        RecreateCurrentMenuUI();
+    }
+
+    if (m_currentState == MenuState::Settings) {
+        CreatePauseMenu();
+    }
+}
+
+void MenuManager::HandleResolutionDropdownClick(sf::Vector2f mousePos, sf::RenderWindow& window) {
+    const int MAX_VISIBLE = 5;
+    float dropdownWidth = 300;
+    sf::Vector2f dropdownPos = sf::Vector2f(
+        (m_windowSize.x - dropdownWidth) / 2,
+        m_resolutionButton.shape.getPosition().y + BUTTON_HEIGHT + 5
+    );
+
+    sf::FloatRect dropdownArea(dropdownPos.x, dropdownPos.y, dropdownWidth, MAX_VISIBLE * BUTTON_HEIGHT);
+
+    if (dropdownArea.contains(mousePos)) {
+        // Calculate which item was clicked
+        int clickedIndex = (int)((mousePos.y - dropdownPos.y) / BUTTON_HEIGHT);
+        int scrollIndex = (int)(m_resolutionScrollOffset / BUTTON_HEIGHT);
+        int actualIndex = scrollIndex + clickedIndex;
+
+        if (actualIndex >= 0 && actualIndex < m_availableResolutions.size()) {
+            // Select the resolution
+            m_selectedResolutionIndex = actualIndex;
+            m_settings.resolution = m_availableResolutions[actualIndex];
+
+            // Update button text
+            std::string newResText = std::to_string(m_settings.resolution.x) + " x " +
+                std::to_string(m_settings.resolution.y);
+            m_resolutionButton.text.setString(newResText);
+            CenterText(m_resolutionButton.text, m_resolutionButton.shape);
+
+            // Apply resolution and close dropdown
+            ApplyResolution(window);
+            m_resolutionDropdownOpen = false;
+            m_resolutionScrollOffset = 0.0f;
+
+            std::cout << "Resolution changed to: " << m_settings.resolution.x << "x"
+                << m_settings.resolution.y << std::endl;
+        }
+    }
+    else {
+        // Click outside dropdown, close it
+        m_resolutionDropdownOpen = false;
+        m_resolutionScrollOffset = 0.0f;
+    }
+}
+
+sf::Vector2f MenuManager::ScalePosition(sf::Vector2f originalPos, sf::Vector2f oldSize, sf::Vector2f newSize) {
+    if (oldSize.x == 0 || oldSize.y == 0) return originalPos;
+
+    float scaleX = newSize.x / oldSize.x;
+    float scaleY = newSize.y / oldSize.y;
+
+    return sf::Vector2f(originalPos.x * scaleX, originalPos.y * scaleY);
+}
+
+void MenuManager::CreateSettingsMenu() {
+    m_gamePaused = false;
+
+    if (m_previousState != MenuState::GamePlay && m_ambientSoundsPlaying) {
+        SoundManager::getInstance().StopAmbientSounds();
+        SoundManager::getInstance().ResumeBackgroundMusic();
+        m_ambientSoundsPlaying = false;
+    }
+
+    m_titleText.setString("Settings");
+    sf::FloatRect titleBounds = m_titleText.getLocalBounds();
+    m_titleText.setPosition((m_windowSize.x - titleBounds.width) / 2, 60);
+
+    // Update title shadow
+    m_titleShadow.setString("Settings");
+    m_titleShadow.setPosition(
+        m_titleText.getPosition().x + 3,
+        m_titleText.getPosition().y + 3
+    );
+
+    // Tạo tab buttons với vị trí tối ưu
+    m_tabButtons.clear();
+    float tabY = 140;
+    float tabSpacing = 250;
+    float startX = (m_windowSize.x - tabSpacing) / 2;
+
+    CreateTabButton("Music", sf::Vector2f(startX, tabY), SettingsTab::Music,
+        [this]() { SetActiveTab(SettingsTab::Music); });
+
+    CreateTabButton("Configuration", sf::Vector2f(startX + tabSpacing, tabY), SettingsTab::Configuration,
+        [this]() { SetActiveTab(SettingsTab::Configuration); });
+
+    // Set default active tab
+    SetActiveTab(m_currentSettingsTab);
+
+    // Tạo nội dung dựa trên tab hiện tại
+    CreateSettingsContent();
+
+    // Nút Close ở vị trí tối ưu
+    CreateButton("Close",
+        sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2, m_windowSize.y - 200),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow& window) {
+            SaveSettingsToFile();
+            if (m_previousState == MenuState::GamePlay) {
+                m_currentState = MenuState::GamePlay;
+                m_gamePaused = true;
+                m_buttons.clear();
+                m_sliders.clear();
+                m_tabButtons.clear();
+                m_resolutionDropdownButtons.clear();
+                CreatePauseMenu();
+                if (!m_ambientSoundsPlaying) {
+                    SoundManager::getInstance().PauseBackgroundMusic();
+                    SoundManager::getInstance().StartAmbientSoundCycle();
+                    m_ambientSoundsPlaying = true;
+                }
+            }
+            else {
+                SetMenuState(MenuState::MainMenu);
+            }
+        });
+}
+
+void MenuManager::UpdateResolutionScroll(float deltaTime) {
+    int totalItems = m_availableResolutions.size();
+    int maxScroll = std::max(0, totalItems - MAX_VISIBLE_RESOLUTIONS);
+    m_maxResolutionScroll = maxScroll * BUTTON_HEIGHT;
+
+    if (m_resolutionDropdownOpen) {
+        m_resolutionScrollOffset = std::max(0.0f, std::min(m_resolutionScrollOffset, m_maxResolutionScroll));
+    }
+}
+
+
+void MenuManager::UpdateVisibleResolutions() {
+    m_resolutionDropdownButtons.clear();
+
+    if (!m_resolutionDropdownOpen) {
+        return;
+    }
+
+    float dropdownY = m_resolutionButton.shape.getPosition().y + BUTTON_HEIGHT;
+    int startIndex = (int)(m_resolutionScrollOffset / BUTTON_HEIGHT);
+    int endIndex = std::min(startIndex + MAX_VISIBLE_RESOLUTIONS, (int)m_availableResolutions.size());
+
+    for (int i = startIndex; i < endIndex; ++i) {
+        std::string resText = std::to_string(m_availableResolutions[i].x) + " x " + std::to_string(m_availableResolutions[i].y);
+        float yPos = dropdownY + (i - startIndex) * BUTTON_HEIGHT;
+
+        CreateButton(resText,
+            sf::Vector2f((m_windowSize.x - 300) / 2, yPos),
+            sf::Vector2f(300, BUTTON_HEIGHT),
+            [this, i](sf::RenderWindow& window) {
+                m_selectedResolutionIndex = i;
+                m_settings.resolution = m_availableResolutions[i];
+
+                std::string newResText = std::to_string(m_settings.resolution.x) + " x " + std::to_string(m_settings.resolution.y);
+                m_resolutionButton.text.setString(newResText);
+                CenterText(m_resolutionButton.text, m_resolutionButton.shape);
+
+                ApplyResolution(window);
+                m_resolutionDropdownOpen = false;
+                m_resolutionScrollOffset = 0.0f;
+
+                std::cout << "Resolution changed to: " << m_settings.resolution.x << "x" << m_settings.resolution.y << std::endl;
+            },
+            true);
+    }
+
+    if (m_availableResolutions.size() > MAX_VISIBLE_RESOLUTIONS) {
+        m_maxResolutionScroll = (m_availableResolutions.size() - MAX_VISIBLE_RESOLUTIONS) * BUTTON_HEIGHT;
+    }
+    else {
+        m_maxResolutionScroll = 0.0f;
+    }
+}
+
+void MenuManager::CreateSettingsContent() {
+    // Xóa nội dung cũ (trừ tab buttons và close button)
+    m_sliders.clear();
+
+    // Xóa buttons trừ close button (giữ lại button cuối cùng là Close)
+    if (!m_buttons.empty()) {
+        Button closeButton = m_buttons.back();
+        m_buttons.clear();
+        m_buttons.push_back(closeButton);
+    }
+    m_resolutionDropdownButtons.clear();
+
+    float contentStartY = 220;
+
+    if (m_currentSettingsTab == SettingsTab::Music) {
+        // Tạo Music content
+        float sliderY = contentStartY;
+
+        CreateSlider("Music",
+            sf::Vector2f((m_windowSize.x - 400) / 2, sliderY),
+            m_settings.musicVolume,
+            [this](float value) {
+                m_settings.musicVolume = value;
+                SoundManager::getInstance().SetMusicVolume(value);
+                if (m_musicVolumeCallback) {
+                    m_musicVolumeCallback(value);
+                }
+            });
+
+        sliderY += 80;
+        CreateSlider("Sound effect",
+            sf::Vector2f((m_windowSize.x - 400) / 2, sliderY),
+            m_settings.sfxVolume,
+            [this](float value) {
+                m_settings.sfxVolume = value;
+                SoundManager::getInstance().SetSoundVolume(value);
+                if (m_sfxVolumeCallback) {
+                    m_sfxVolumeCallback(value);
+                }
+            });
+    }
+
+    else if (m_currentSettingsTab == SettingsTab::Configuration) {
+        // Tạo Configuration content
+        float buttonY = contentStartY + 60;
+
+        std::string resolutionText = std::to_string(m_settings.resolution.x) + " x " + std::to_string(m_settings.resolution.y);
+        m_resolutionButton = Button();
+        m_resolutionButton.shape.setPosition(sf::Vector2f((m_windowSize.x - 300) / 2, contentStartY));
+        m_resolutionButton.shape.setSize(sf::Vector2f(300, BUTTON_HEIGHT));
+        m_resolutionButton.shape.setFillColor(BUTTON_NORMAL_COLOR);
+        m_resolutionButton.shape.setOutlineThickness(2);
+        m_resolutionButton.shape.setOutlineColor(sf::Color::White);
+        m_resolutionButton.isDeleteButton = false;
+
+        m_resolutionButton.text.setFont(m_font);
+        m_resolutionButton.text.setString(resolutionText);
+        m_resolutionButton.text.setCharacterSize(24);
+        m_resolutionButton.text.setFillColor(TEXT_COLOR);
+        CenterText(m_resolutionButton.text, m_resolutionButton.shape);
+
+        m_resolutionButton.callback = [this](sf::RenderWindow& window) {
+            m_resolutionDropdownOpen = !m_resolutionDropdownOpen;
+            if (m_resolutionDropdownOpen) {
+                m_resolutionScrollOffset = 0.0f;
+                if (m_availableResolutions.size() > MAX_VISIBLE_RESOLUTIONS) {
+                    m_maxResolutionScroll = (m_availableResolutions.size() - MAX_VISIBLE_RESOLUTIONS) * BUTTON_HEIGHT;
+                }
+                else {
+                    m_maxResolutionScroll = 0.0f;
+                }
+            }
+            else {
+                m_resolutionScrollOffset = 0.0f;
+                m_resolutionDropdownButtons.clear(); // Xóa nút khi đóng
+            }
+
+            // Tạo nút dựa trên phạm vi cuộn
+            float dropdownY = m_resolutionButton.shape.getPosition().y + BUTTON_HEIGHT;
+            int startIndex = (int)(m_resolutionScrollOffset / BUTTON_HEIGHT);
+            int endIndex = std::min(startIndex + MAX_VISIBLE_RESOLUTIONS, (int)m_availableResolutions.size());
+            for (size_t i = startIndex; i < endIndex; ++i) {
+                std::string resText = std::to_string(m_availableResolutions[i].x) + " x " + std::to_string(m_availableResolutions[i].y);
+                CreateButton(resText,
+                    sf::Vector2f((m_windowSize.x - 300) / 2, dropdownY + (i - startIndex) * BUTTON_HEIGHT),
+                    sf::Vector2f(300, BUTTON_HEIGHT),
+                    [this, i](sf::RenderWindow& window) {
+                        sf::Vector2f oldPosition = m_resolutionButton.shape.getPosition();
+
+                        m_selectedResolutionIndex = i;
+                        m_settings.resolution = m_availableResolutions[i];
+
+                        std::string newResText = std::to_string(m_settings.resolution.x) + " x " + std::to_string(m_settings.resolution.y);
+
+                        if (!m_buttons.empty()) {
+                            m_buttons[0].text.setString(newResText);
+                            CenterText(m_buttons[0].text, m_buttons[0].shape);
+                        }
+
+                        m_resolutionButton.text.setString(newResText);
+                        CenterText(m_resolutionButton.text, m_resolutionButton.shape);
+
+                        ApplyResolution(window);
+
+                        m_resolutionDropdownOpen = false;
+                        UpdateWindowSize(window);
+
+                        std::cout << "Resolution changed to: " << m_settings.resolution.x << "x" << m_settings.resolution.y << std::endl;
+                    },
+                    true);
+            }
+            };
+
+        m_resolutionButton.state = ButtonState::Normal;
+        m_resolutionButton.isVisible = true;
+
+        m_buttons.insert(m_buttons.begin(), m_resolutionButton);
+
+        sf::Text resolutionLabel;
+        resolutionLabel.setFont(m_font);
+        resolutionLabel.setString("Resolution:");
+        resolutionLabel.setCharacterSize(20);
+        resolutionLabel.setFillColor(TEXT_COLOR);
+        sf::FloatRect labelBounds = resolutionLabel.getLocalBounds();
+        resolutionLabel.setPosition(
+            (m_windowSize.x - labelBounds.width) / 2,
+            buttonY - 35
+        );
+    }
+}
+
+void MenuManager::CreateTabButton(const std::string& text, sf::Vector2f position,
+    SettingsTab tab, std::function<void()> callback) {
+    TabButton tabButton;
+
+    tabButton.text.setFont(m_font);
+    tabButton.text.setString(text);
+    tabButton.text.setCharacterSize(24);
+    tabButton.text.setPosition(position);
+    tabButton.callback = callback;
+    tabButton.isActive = (tab == m_currentSettingsTab);
+
+    // Tạo underline
+    sf::FloatRect textBounds = tabButton.text.getLocalBounds();
+    tabButton.underline.setSize(sf::Vector2f(textBounds.width, 3));
+    tabButton.underline.setPosition(position.x, position.y + textBounds.height + 5);
+    tabButton.underline.setFillColor(TAB_UNDERLINE_COLOR);
+
+    // Set màu dựa trên trạng thái active
+    if (tabButton.isActive) {
+        tabButton.text.setFillColor(TAB_ACTIVE_COLOR);
+        tabButton.underline.setFillColor(TAB_UNDERLINE_COLOR);
+    }
+    else {
+        tabButton.text.setFillColor(TAB_INACTIVE_COLOR);
+        tabButton.underline.setFillColor(sf::Color::Transparent);
+    }
+
+    m_tabButtons.push_back(tabButton);
+}
+
+void MenuManager::SetActiveTab(SettingsTab tab) {
+    m_currentSettingsTab = tab;
+
+    // Update tab buttons
+    for (auto& tabButton : m_tabButtons) {
+        tabButton.isActive = false;
+        tabButton.text.setFillColor(TAB_INACTIVE_COLOR);
+        tabButton.underline.setFillColor(sf::Color::Transparent);
+    }
+
+    // Set active tab
+    if (tab == SettingsTab::Music && m_tabButtons.size() > 0) {
+        m_tabButtons[0].isActive = true;
+        m_tabButtons[0].text.setFillColor(TAB_ACTIVE_COLOR);
+        m_tabButtons[0].underline.setFillColor(TAB_UNDERLINE_COLOR);
+    }
+    else if (tab == SettingsTab::Configuration && m_tabButtons.size() > 1) {
+        m_tabButtons[1].isActive = true;
+        m_tabButtons[1].text.setFillColor(TAB_ACTIVE_COLOR);
+        m_tabButtons[1].underline.setFillColor(TAB_UNDERLINE_COLOR);
+    }
+
+    // Recreate content
+    CreateSettingsContent();
+}
+
+void MenuManager::UpdateTabButtons(sf::RenderWindow& window) {
+    sf::Vector2f mousePos = sf::Vector2f(sf::Mouse::getPosition(window));
+
+    for (auto& tabButton : m_tabButtons) {
+        sf::FloatRect textBounds = tabButton.text.getGlobalBounds();
+        if (textBounds.contains(mousePos)) {
+            if (!tabButton.isActive) {
+                tabButton.text.setFillColor(sf::Color(200, 200, 200, 255));
+            }
+        }
+        else {
+            if (!tabButton.isActive) {
+                tabButton.text.setFillColor(TAB_INACTIVE_COLOR);
+            }
+        }
+    }
+}
+
+void MenuManager::DrawTabButtons(sf::RenderWindow& window) {
+    for (const auto& tabButton : m_tabButtons) {
+        window.draw(tabButton.text);
+        window.draw(tabButton.underline);
+    }
+}
+
+void MenuManager::CreateSlider(const std::string& label, sf::Vector2f position, float value,
+    std::function<void(float)> callback) {
+    Slider slider;
+
+    slider.label.setFont(m_font);
+    slider.label.setString(label + ": " + std::to_string((int)value));
+    slider.label.setCharacterSize(22);
+    slider.label.setFillColor(TEXT_COLOR);
+    slider.label.setPosition(position.x, position.y - 35);
+
+    // Track với kích thước phù hợp
+    slider.track.setSize(sf::Vector2f(350, 12));
+    slider.track.setPosition(position.x, position.y);
+    slider.track.setFillColor(SLIDER_TRACK_COLOR);
+    slider.track.setOutlineThickness(2);
+    slider.track.setOutlineColor(sf::Color(100, 100, 100, 255));
+
+    // Handle với thiết kế đẹp hơn
+    slider.handle.setSize(sf::Vector2f(24, 24));
+    float handleX = position.x + (value / 100.0f) * (350 - 24);
+    slider.handle.setPosition(handleX, position.y - 6);
+    slider.handle.setFillColor(SLIDER_HANDLE_COLOR);
+    slider.handle.setOutlineThickness(2);
+    slider.handle.setOutlineColor(sf::Color::White);
+
+    slider.value = value;
+    slider.callback = callback;
+    slider.isVisible = true;
+    slider.isDragging = false;
+
+    m_sliders.push_back(slider);
+}
+
+void MenuManager::UpdateSliders(sf::RenderWindow& window) {
+    sf::Vector2f mousePos = sf::Vector2f(sf::Mouse::getPosition(window));
+
+    for (auto& slider : m_sliders) {
+        if (!slider.isVisible) continue;
+
+        if (IsMouseOverSlider(slider, mousePos) || slider.isDragging) {
+            slider.handle.setFillColor(SLIDER_HANDLE_HOVER_COLOR);
+        }
+        else {
+            slider.handle.setFillColor(SLIDER_HANDLE_COLOR);
+        }
+    }
+}
+
+void MenuManager::DrawSliders(sf::RenderWindow& window) {
+    for (const auto& slider : m_sliders) {
+        if (slider.isVisible) {
+            window.draw(slider.label);
+
+            sf::RectangleShape trackBorder = slider.track;
+            trackBorder.setFillColor(sf::Color::Transparent);
+            trackBorder.setOutlineThickness(2);
+            trackBorder.setOutlineColor(MEDIEVAL_GOLD);
+            window.draw(trackBorder);
+            window.draw(slider.track);
+
+            sf::RectangleShape handleShadow = slider.handle;
+            handleShadow.setPosition(slider.handle.getPosition().x + 2, slider.handle.getPosition().y + 2);
+            handleShadow.setFillColor(MEDIEVAL_SHADOW);
+            handleShadow.setOutlineThickness(0);
+            window.draw(handleShadow);
+
+            window.draw(slider.handle);
+
+            sf::CircleShape gem(4);
+            sf::Vector2f handleCenter = sf::Vector2f(
+                slider.handle.getPosition().x + slider.handle.getSize().x / 2 - 4,
+                slider.handle.getPosition().y + slider.handle.getSize().y / 2 - 4
+            );
+            gem.setPosition(handleCenter);
+            gem.setFillColor(sf::Color(100, 200, 255, 200));
+            gem.setOutlineThickness(1);
+            gem.setOutlineColor(MEDIEVAL_GOLD);
+            window.draw(gem);
+        }
+    }
+}
+
+bool MenuManager::IsMouseOverSlider(const Slider& slider, sf::Vector2f mousePos) {
+    return slider.handle.getGlobalBounds().contains(mousePos) ||
+        slider.track.getGlobalBounds().contains(mousePos);
+}
+
+void MenuManager::UpdateSliderValue(Slider& slider, sf::Vector2f mousePos) {
+    sf::FloatRect trackBounds = slider.track.getGlobalBounds();
+
+    float relativeX = mousePos.x - trackBounds.left;
+    relativeX = std::max(0.0f, std::min(relativeX, trackBounds.width - 20));
+
+    float newValue = (relativeX / (trackBounds.width - 20)) * 100.0f;
+    newValue = std::max(0.0f, std::min(newValue, 100.0f));
+
+    slider.value = newValue;
+
+    float handleX = trackBounds.left + (newValue / 100.0f) * (trackBounds.width - 20);
+    slider.handle.setPosition(handleX, slider.handle.getPosition().y);
+
+    std::string labelText = slider.label.getString();
+    size_t colonPos = labelText.find(':');
+    if (colonPos != std::string::npos) {
+        labelText = labelText.substr(0, colonPos + 2) + std::to_string((int)newValue);
+        slider.label.setString(labelText);
+    }
+
+    if (slider.callback) {
+        slider.callback(newValue);
+    }
+}
+
+void MenuManager::SetWaitingForInput(bool waiting) {
+    m_waitingForNameInput = waiting;
+
+    if (waiting) {
+        // Setup input box focus
+        m_inputBox.setOutlineColor(INPUT_BOX_FOCUS_COLOR);
+        m_inputBox.setOutlineThickness(4);
+    }
+    else {
+        // Remove input box focus
+        m_inputBox.setOutlineColor(INPUT_BOX_BORDER_COLOR);
+        m_inputBox.setOutlineThickness(3);
+        ClearInputText();
+    }
+}
+
+
+bool MenuManager::IsGuestProfile() {
+    return m_guestProfile;
+}
+
+void MenuManager::CreateProfileMenu() {
+    m_titleShadow.setString("");
+
+    m_titleText.setString("Profile Menu");
+    sf::FloatRect titleBounds = m_titleText.getLocalBounds();
+    m_titleText.setPosition((m_windowSize.x - titleBounds.width) / 2, 100);
+
+    m_titleShadow.setString("Profile Menu");
+    m_titleShadow.setPosition(
+        m_titleText.getPosition().x + 3,
+        m_titleText.getPosition().y + 3
+    );
+
+    float startY = m_windowSize.y / 2 - 100;
+
+    CreateMedievalButton("New Profile",
+        sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2, startY),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) {
+            if (m_profiles.size() >= MAX_PROFILES) {
+                ShowWarningMessage("Maximum number of profiles reached!");
+            }
+            else {
+                SetMenuState(MenuState::CreateProfile);
+            }
+        },
+        ButtonStyle::Shield,
+        ButtonIcon::Shield);
+
+    CreateMedievalButton("Existing Profile",
+        sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2, startY + BUTTON_SPACING),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) { SetMenuState(MenuState::ChooseProfile); },
+        ButtonStyle::WoodPlank,
+        ButtonIcon::Crown);
+
+    CreateMedievalButton("Play as Guest",
+        sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2, startY + BUTTON_SPACING * 2),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) {
+            if (!m_guestProfile) {
+                PlayerProfile newProfile("Guest");
+                m_profiles.push_back(newProfile);
+                m_currentProfile = &m_profiles.back();
+                m_guestProfile = true;
+
+                SaveProfilesToFile();
+                std::cout << "Created new profile: Guest" << std::endl;
+            }
+            SetMenuState(MenuState::MainMenu);
+        },
+        ButtonStyle::Stone,
+        ButtonIcon::Sword);
+
+    CreateMedievalButton("Exit",
+        sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2, startY + BUTTON_SPACING * 3),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow& window) {
+            if (m_exitCallback) {
+                m_exitCallback(window);
+            }
+        },
+        ButtonStyle::Scroll,
+        ButtonIcon::Scroll);
+}
+
+
+
+void MenuManager::CreateNewProfileMenu() {
+    m_titleText.setString("Create New Profile");
+    sf::FloatRect titleBounds = m_titleText.getLocalBounds();
+    m_titleText.setPosition((m_windowSize.x - titleBounds.width) / 2, 120);
+
+    m_titleShadow.setString("Create New Profile");
+    m_titleShadow.setPosition(m_titleText.getPosition().x + 3, m_titleText.getPosition().y + 3);
+
+    sf::FloatRect promptBounds = m_inputPromptText.getLocalBounds();
+    m_inputPromptText.setPosition(
+        (m_windowSize.x - promptBounds.width) / 2,
+        m_windowSize.y / 2 - 120
+    );
+
+    m_inputBoxGlow.setPosition(
+        (m_windowSize.x - m_inputBoxGlow.getSize().x) / 2,
+        m_windowSize.y / 2 - 55
+    );
+
+    m_inputBox.setPosition(
+        (m_windowSize.x - m_inputBox.getSize().x) / 2,
+        m_windowSize.y / 2 - 50
+    );
+
+    m_inputText.setPosition(
+        m_inputBox.getPosition().x + 15,
+        m_inputBox.getPosition().y + 15
+    );
+
+    SetWaitingForInput(true);
+
+    CreateEnhancedButton("Back",
+        sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2, m_windowSize.y / 2 + 50),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) {
+            SetWaitingForInput(false);
+            ClearInputText();
+            SetMenuState(MenuState::ProfileMenu);
+        });
+}
+
+void MenuManager::CreateChooseProfileMenu() {
+    m_titleText.setString("Choose Profile");
+    sf::FloatRect titleBounds = m_titleText.getLocalBounds();
+    m_titleText.setPosition((m_windowSize.x - titleBounds.width) / 2, 100);
+
+    float centerX = m_windowSize.x / 2 - BUTTON_WIDTH / 2;
+    float startY = m_windowSize.y / 2 - BUTTON_HEIGHT * 2;
+    int buttonIndex = 0;
+
+    for (size_t i = 0; i < m_profiles.size(); ++i) {
+        std::string profileInfo = m_profiles[i].name + " - Lv." + std::to_string(m_profiles[i].currentLevel);
+        float profileButtonWidth = BUTTON_WIDTH - 80;
+        CreateButton(profileInfo,
+            sf::Vector2f(centerX, startY + buttonIndex * BUTTON_SPACING),
+            sf::Vector2f(profileButtonWidth, BUTTON_HEIGHT),
+            [this, i](sf::RenderWindow&) {
+                SelectProfile(i);
+                SetMenuState(MenuState::MainMenu);
+            });
+
+        CreateDeleteButton("X",
+            sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2 + profileButtonWidth + 10, startY + buttonIndex * BUTTON_SPACING),
+            sf::Vector2f(60, BUTTON_HEIGHT),
+            [this, i](sf::RenderWindow&) {
+                DeleteProfile(i);
+            });
+
+        buttonIndex++;
+    }
+
+    if (m_profiles.size() < MAX_PROFILES) {
+        CreateButton("+ New Profile",
+            sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2, startY + buttonIndex * BUTTON_SPACING),
+            sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+            [this](sf::RenderWindow&) { SetMenuState(MenuState::CreateProfile); });
+        buttonIndex++;
+    }
+
+    CreateButton("Back",
+        sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2, startY + buttonIndex * BUTTON_SPACING),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) { SetMenuState(MenuState::ProfileMenu); });
+}
+
+
+void MenuManager::CreateMainMenu() {
+    std::string title = m_currentProfile ? "Welcome, " + m_currentProfile->name + "!" : "Welcome, Guest!";
+    m_titleText.setString(title);
+    sf::FloatRect titleBounds = m_titleText.getLocalBounds();
+    m_titleText.setPosition((m_windowSize.x - titleBounds.width) / 2, 100);
+
+    float startY = m_windowSize.y / 2 - 50;
+
+    if (m_ambientSoundsPlaying) {
+        SoundManager::getInstance().StopAmbientSounds();
+        SoundManager::getInstance().ResumeBackgroundMusic();
+        m_ambientSoundsPlaying = false;
+    }
+
+    if (m_currentProfile) {
+        m_PlayerTextManager.SetShowTopRightExpBar(true);
+        m_PlayerTextManager.UpdateExperience(
+            m_currentProfile->currentExperience,
+            m_currentProfile->expToNext,
+            m_currentProfile->currentLevel
+        );
+        m_PlayerTextManager.UpdateCoins(m_currentProfile->coins);
+    }
+
+    CreateMedievalButton("Play",
+        sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2, startY),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) { SetMenuState(MenuState::PlayMenu); },
+        ButtonStyle::WoodPlank,
+        ButtonIcon::Sword);
+
+    CreateMedievalButton("Settings",
+        sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2, startY + BUTTON_SPACING),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) { SetMenuState(MenuState::Settings); },
+        ButtonStyle::Stone,
+        ButtonIcon::Gear);
+    CreateMedievalButton("Back",
+        sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2, startY + BUTTON_SPACING * 2),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) { SetMenuState(MenuState::ProfileMenu); },
+        ButtonStyle::Scroll,
+        ButtonIcon::Scroll);
+}
+
+void MenuManager::CreatePlayMenu() {
+    m_titleText.setString("Select Map");
+    sf::FloatRect titleBounds = m_titleText.getLocalBounds();
+    m_titleText.setPosition((m_windowSize.x - titleBounds.width) / 2, 100);
+
+    if (m_currentProfile) {
+        m_PlayerTextManager.SetShowTopRightExpBar(true);
+        m_PlayerTextManager.UpdateExperience(
+            m_currentProfile->currentExperience,
+            m_currentProfile->expToNext,
+            m_currentProfile->currentLevel
+        );
+        m_PlayerTextManager.UpdateCoins(m_currentProfile->coins);
+    }
+
+    float centerX = m_windowSize.x / 2 - BUTTON_WIDTH / 2;
+    float startY = m_windowSize.y / 2 - BUTTON_HEIGHT * 2;
+
+    int totalLevels = 4;
+    for (int i = 1; i <= totalLevels; ++i) {
+        std::string levelText = "Map " + std::to_string(i);
+        CreateMedievalButton(levelText,
+            sf::Vector2f(centerX, startY + (i - 1) * BUTTON_SPACING),
+            sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+            [this, i](sf::RenderWindow&) {
+                m_currentMap = i;
+                SetMenuState(MenuState::DifficultyMenu);
+            },
+            ButtonStyle::WoodPlank,
+            ButtonIcon::Target);
+    }
+
+    CreateMedievalButton("Back",
+        sf::Vector2f((m_windowSize.x - BUTTON_WIDTH) / 2, startY + totalLevels * BUTTON_SPACING),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) {
+            if (m_previousState == MenuState::GamePlay) {
+                m_currentState = MenuState::GamePlay;
+                m_gamePaused = true;
+                m_buttons.clear();
+                m_sliders.clear();
+                m_resolutionDropdownButtons.clear();
+                CreatePauseMenu();
+                std::cout << "Returning to Pause Menu from PlayMenu" << std::endl;
+            }
+            else {
+                SetMenuState(MenuState::MainMenu);
+            }
+        },
+        ButtonStyle::Scroll,
+        ButtonIcon::Scroll);
+}
+
+
+void MenuManager::CreateDifficultyMenu() {
+    m_buttons.clear();
+    m_titleText.setString("Select Difficulty");
+    CenterText(m_titleText, sf::RectangleShape(sf::Vector2f(m_windowSize.x, 100)));
+
+    if (m_currentProfile) {
+        m_PlayerTextManager.SetShowTopRightExpBar(true);
+        m_PlayerTextManager.UpdateExperience(
+            m_currentProfile->currentExperience,
+            m_currentProfile->expToNext,
+            m_currentProfile->currentLevel
+        );
+        m_PlayerTextManager.UpdateCoins(m_currentProfile->coins);
+    }
+
+    float centerX = m_windowSize.x / 2 - BUTTON_WIDTH / 2;
+    float startY = m_windowSize.y / 2 - BUTTON_HEIGHT * 2;
+
+    CreateMedievalButton("Easy",
+        sf::Vector2f(centerX, startY),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) {
+            if (m_startGameCallback) {
+                m_startGameCallback(m_currentMap, Difficulty::Easy);
+            }
+            SetMenuState(MenuState::GamePlay);
+        },
+        ButtonStyle::Shield,
+        ButtonIcon::Shield);
+
+    CreateMedievalButton("Medium",
+        sf::Vector2f(centerX, startY + BUTTON_SPACING),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) {
+            if (m_startGameCallback) {
+                m_startGameCallback(m_currentMap, Difficulty::Medium);
+            }
+            SetMenuState(MenuState::GamePlay);
+        },
+        ButtonStyle::Stone,
+        ButtonIcon::Sword);
+
+    CreateMedievalButton("Hard",
+        sf::Vector2f(centerX, startY + BUTTON_SPACING * 2),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) {
+            if (m_startGameCallback) {
+                m_startGameCallback(m_currentMap, Difficulty::Hard);
+            }
+            SetMenuState(MenuState::GamePlay);
+        },
+        ButtonStyle::WoodPlank,
+        ButtonIcon::Crown);
+
+    CreateMedievalButton("Extremely",
+        sf::Vector2f(centerX, startY + BUTTON_SPACING * 3),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) {
+            if (m_startGameCallback) {
+                m_startGameCallback(m_currentMap, Difficulty::Extremely);
+            }
+            SetMenuState(MenuState::GamePlay);
+        },
+        ButtonStyle::WoodPlank,
+        ButtonIcon::Scroll);
+
+    CreateMedievalButton("Back",
+        sf::Vector2f(centerX, startY + BUTTON_SPACING * 4),
+        sf::Vector2f(BUTTON_WIDTH, BUTTON_HEIGHT),
+        [this](sf::RenderWindow&) {
+            SetMenuState(MenuState::PlayMenu);
+        },
+        ButtonStyle::Scroll,
+        ButtonIcon::Scroll);
+}
+
+
+void MenuManager::CreateButton(const std::string& text, sf::Vector2f position, sf::Vector2f size,
+    std::function<void(sf::RenderWindow&)> callback, bool isDropdownButton) {
+    Button button;
+    button.shape.setPosition(position);
+    button.shape.setSize(size);
+    button.shape.setFillColor(BUTTON_NORMAL_COLOR);
+    button.shape.setOutlineThickness(2);
+    button.shape.setOutlineColor(sf::Color::White);
+    button.isDeleteButton = false;
+
+    button.text.setFont(m_font);
+    button.text.setString(text);
+
+    int fontSize = 24;
+    if (text.length() > 20) {
+        fontSize = 18;
+    }
+    else if (text.length() > 15) {
+        fontSize = 20;
+    }
+    button.text.setCharacterSize(fontSize);
+    button.text.setFillColor(TEXT_COLOR);
+    CenterText(button.text, button.shape);
+
+    button.callback = callback;
+    button.state = ButtonState::Normal;
+    button.isVisible = true;
+
+    if (isDropdownButton) {
+        m_resolutionDropdownButtons.push_back(button);
+    }
+    else {
+        m_buttons.push_back(button);
+    }
+}
+
+void MenuManager::CreateDeleteButton(const std::string& text, sf::Vector2f position, sf::Vector2f size,
+    std::function<void(sf::RenderWindow&)> callback) {
+    Button button;
+    button.shape.setPosition(position);
+    button.shape.setSize(size);
+    button.shape.setFillColor(DELETE_BUTTON_COLOR);
+    button.shape.setOutlineThickness(2);
+    button.shape.setOutlineColor(sf::Color::White);
+    button.isDeleteButton = true;
+
+    button.text.setFont(m_font);
+    button.text.setString(text);
+    button.text.setCharacterSize(20);
+    button.text.setFillColor(TEXT_COLOR);
+    CenterText(button.text, button.shape);
+
+    button.callback = callback;
+    button.state = ButtonState::Normal;
+    button.isVisible = true;
+
+    m_buttons.push_back(button);
+}
+
+void MenuManager::UpdateButtons(sf::RenderWindow& window) {
+    sf::Vector2f mousePos = sf::Vector2f(sf::Mouse::getPosition(window));
+
+    if (m_gameOver && m_currentState == MenuState::GamePlay) {
+        for (auto& button : m_gameOverButtons) {
+            if (!button.isVisible) continue;
+
+            if (IsMouseOverButton(button, mousePos)) {
+                if (button.state != ButtonState::Pressed) {
+                    button.state = ButtonState::Hovered;
+                    button.shape.setFillColor(BUTTON_HOVER_GRADIENT_START);
+                }
+            }
+            else {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(MEDIEVAL_WOOD_DARK);
+            }
+
+            if (button.state == ButtonState::Pressed) {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(MEDIEVAL_WOOD_DARK);
+            }
+        }
+        return; // Dừng xử lý nếu đang gameover
+    }
+
+    if (m_gameWon && m_currentState == MenuState::GamePlay) {
+        for (auto& button : m_gameWonButtons) {
+            if (!button.isVisible) continue;
+
+            if (IsMouseOverButton(button, mousePos)) {
+                if (button.state != ButtonState::Pressed) {
+                    button.state = ButtonState::Hovered;
+                    button.shape.setFillColor(BUTTON_HOVER_GRADIENT_START);
+                }
+            }
+            else {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(MEDIEVAL_WOOD_DARK);
+            }
+
+            if (button.state == ButtonState::Pressed) {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(MEDIEVAL_WOOD_DARK);
+            }
+        }
+        return; // Dừng xử lý nếu đang gameover
+    }
+
+    if (m_gamePaused && m_currentState == MenuState::GamePlay) {
+        for (auto& button : m_pauseButtons) {
+            if (!button.isVisible) continue;
+
+            if (IsMouseOverButton(button, mousePos)) {
+                if (button.state != ButtonState::Pressed) {
+                    button.state = ButtonState::Hovered;
+                    button.shape.setFillColor(BUTTON_HOVER_GRADIENT_START);
+                }
+            }
+            else {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(MEDIEVAL_WOOD_DARK);
+            }
+
+            if (button.state == ButtonState::Pressed) {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(MEDIEVAL_WOOD_DARK);
+            }
+        }
+        return; // Dừng xử lý nếu đang pause
+    }
+
+    for (auto& button : m_buttons) {
+        if (!button.isVisible) continue;
+
+        if (IsMouseOverButton(button, mousePos)) {
+            if (button.state != ButtonState::Pressed) {
+                button.state = ButtonState::Hovered;
+
+                if (button.isDeleteButton) {
+                    button.shape.setFillColor(DELETE_BUTTON_HOVER_COLOR);
+                }
+                else {
+                    button.shape.setFillColor(BUTTON_HOVER_GRADIENT_START);
+                }
+            }
+        }
+        else {
+            button.state = ButtonState::Normal;
+            if (button.isDeleteButton) {
+                button.shape.setFillColor(DELETE_BUTTON_COLOR);
+            }
+            else {
+                button.shape.setFillColor(BUTTON_NORMAL_COLOR);
+            }
+        }
+
+        if (button.state == ButtonState::Pressed) {
+            button.state = ButtonState::Normal;
+        }
+    }
+
+    // Update pause buttons with medieval styling
+    if (m_gamePaused && m_currentState == MenuState::GamePlay) {
+        for (auto& button : m_pauseButtons) {
+            if (!button.isVisible) continue;
+
+            if (IsMouseOverButton(button, mousePos)) {
+                if (button.state != ButtonState::Pressed) {
+                    button.state = ButtonState::Hovered;
+                    button.shape.setFillColor(BUTTON_HOVER_GRADIENT_START);
+                }
+            }
+            else {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(BUTTON_NORMAL_COLOR);
+            }
+
+            if (button.state == ButtonState::Pressed) {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(BUTTON_NORMAL_COLOR);
+            }
+        }
+    }
+
+    if (m_gameOver && m_currentState == MenuState::GamePlay) {
+        for (auto& button : m_gameOverButtons) {
+            if (!button.isVisible) continue;
+
+            if (IsMouseOverButton(button, mousePos)) {
+                if (button.state != ButtonState::Pressed) {
+                    button.state = ButtonState::Hovered;
+                    button.shape.setFillColor(BUTTON_HOVER_GRADIENT_START);
+                }
+            }
+            else {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(BUTTON_NORMAL_COLOR);
+            }
+
+            if (button.state == ButtonState::Pressed) {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(BUTTON_NORMAL_COLOR);
+            }
+        }
+    }
+
+    if (m_gameWon && m_currentState == MenuState::GamePlay) {
+        for (auto& button : m_gameWonButtons) {
+            if (!button.isVisible) continue;
+
+            if (IsMouseOverButton(button, mousePos)) {
+                if (button.state != ButtonState::Pressed) {
+                    button.state = ButtonState::Hovered;
+                    button.shape.setFillColor(BUTTON_HOVER_GRADIENT_START);
+                }
+            }
+            else {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(BUTTON_NORMAL_COLOR);
+            }
+
+            if (button.state == ButtonState::Pressed) {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(BUTTON_NORMAL_COLOR);
+            }
+        }
+    }
+
+    if (m_resolutionDropdownOpen) {
+        for (auto& button : m_resolutionDropdownButtons) {
+            if (!button.isVisible) continue;
+
+            if (IsMouseOverButton(button, mousePos)) {
+                if (button.state != ButtonState::Pressed) {
+                    button.state = ButtonState::Hovered;
+                    button.shape.setFillColor(BUTTON_HOVER_GRADIENT_START);
+                }
+            }
+            else {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(BUTTON_NORMAL_COLOR);
+            }
+
+            if (button.state == ButtonState::Pressed) {
+                button.state = ButtonState::Normal;
+                button.shape.setFillColor(BUTTON_NORMAL_COLOR);
+            }
+        }
+    }
+}
+
+
+
+void MenuManager::CreateNewProfile(const std::string& name) {
+    for (const auto& profile : m_profiles) {
+        if (profile.name == name) {
+            ShowWarningMessage("Profile name already exists!");
+            return;
+        }
+    }
+
+    if (m_profiles.size() >= MAX_PROFILES) {
+        ShowWarningMessage("Maximum number of profiles reached!");
+        return;
+    }
+
+    PlayerProfile newProfile(name);
+    m_profiles.push_back(newProfile);
+    m_currentProfile = &m_profiles.back();
+
+    SaveProfilesToFile();
+    std::cout << "Created new profile: " << name << std::endl;
+}
+
+void MenuManager::SelectProfile(int index) {
+    if (index >= 0 && index < m_profiles.size()) {
+        m_currentProfile = &m_profiles[index];
+        std::cout << "Selected profile: " << m_currentProfile->name << std::endl;
+    }
+
+    bool shouldShowExpBar = (m_currentState == MenuState::MainMenu ||
+        m_currentState == MenuState::PlayMenu ||
+        m_currentState == MenuState::DifficultyMenu);
+
+    if (shouldShowExpBar) {
+        m_PlayerTextManager.SetShowTopRightExpBar(true);
+        m_PlayerTextManager.UpdateExperience(
+            m_currentProfile->currentExperience,
+            m_currentProfile->expToNext,
+            m_currentProfile->currentLevel
+        );
+        m_PlayerTextManager.UpdateCoins(m_currentProfile->coins);
+    }
+}
+
+
+void MenuManager::RecreateCurrentMenuUI() {
+    // Lưu lại trạng thái hiện tại
+    MenuState currentState = m_currentState;
+    SettingsTab currentTab = m_currentSettingsTab;
+    bool wasDropdownOpen = m_resolutionDropdownOpen;
+
+    // Đóng dropdown nếu đang mở
+    m_resolutionDropdownOpen = false;
+
+    // Xóa tất cả UI elements
+    m_buttons.clear();
+    m_sliders.clear();
+    m_tabButtons.clear();
+    m_resolutionDropdownButtons.clear();
+
+    // Clear title texts to prevent ghost text
+    m_titleText.setString("");
+    m_titleShadow.setString("");
+
+    // Tạo lại UI dựa trên menu hiện tại
+    switch (currentState) {
+    case MenuState::ProfileMenu:
+        CreateProfileMenu();
+        break;
+    case MenuState::CreateProfile:
+        CreateNewProfileMenu();
+        break;
+    case MenuState::ChooseProfile:
+        CreateChooseProfileMenu();
+        break;
+    case MenuState::MainMenu:
+        CreateMainMenu();
+        break;
+    case MenuState::PlayMenu:
+        CreatePlayMenu();
+        break;
+    case MenuState::DifficultyMenu:
+        CreateDifficultyMenu();
+        break;
+    case MenuState::Settings:
+        m_currentSettingsTab = currentTab;
+        CreateSettingsMenu();
+        break;
+    case MenuState::GamePlay:
+        if (m_gamePaused) {
+            CreatePauseMenu();
+        }
+        else {
+            m_titleText.setString("");
+            m_titleShadow.setString("");
+        }
+
+        if (m_gameOver) {
+            CreateGameOverMenu();
+            ;
+        }
+        else {
+            m_titleText.setString("");
+            m_titleShadow.setString("");
+        }
+
+        if (m_gameWon) {
+            CreateGameWonMenu();
+        }
+        else {
+            m_titleText.setString("");
+            m_titleShadow.setString("");
+        }
+        break;
+    default:
+        break;
+    }
+
+    if (m_titleText.getString() != "") {
+        sf::FloatRect titleBounds = m_titleText.getLocalBounds();
+        m_titleText.setPosition((m_windowSize.x - titleBounds.width) / 2,
+            m_titleText.getPosition().y);
+
+        m_titleShadow.setPosition(
+            m_titleText.getPosition().x + 3,
+            m_titleText.getPosition().y + 3
+        );
+    }
+}
+

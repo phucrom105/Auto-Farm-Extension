@@ -1,0 +1,37 @@
+Ô trồng fruit: fruit_patch.png
+lueberry:
+Đang xử lý: harvested_bush.png
+Thu hoạch: blueberry_bush.png
+Sau khi thu hoạch và xuất hiện cây: bush_shrub.png
+
+Tomato:
+
+
+Apple:
+Sau khi thu hoạch và xuất hiện cây: dead_tree.webp
+
+Lemon:
+Đang xử lý: src="data:image/webp;base64,UklGRrIAAABXRUJQVlA4TKUAAAAvCwAEEE+gtG0jON0pCquiY+90t8EpaiRJWfry7oGh82/kRCiKJKm5bCG9A0LwbwEFiBAIJIFtv1gAAFcXUltFXiM/vJ+Lb5/7f8FtZNtqc6TXgH6mkPM3I8ypAFMD4sxs98Hu10VE9D+ABNAkF6jGJEWTtP9Jlyb9O6oey3qM9L2EW1vHMQ3EG3a9wCquczQ6VrVoeyoTSPZ3gP/D3QLHuAYwxgIA"
+Thu hoạch: src="data:image/webp;base64,UklGRi4BAABXRUJQVlA4TCIBAAAvEUAHEF9gJAASXkAk2bzgawe4gEneMBTZxv+4uhoFtBVAFsJRG0lqgy+CIaVBuiY1ikWQbVOx0R/sAYD/f0ZW5rOLTjOlNCP63IZc2y6Ao+1/2ub3+ME1W8p+/uVOeACD5MJEkuID2LpAmcl2aMuoW5TpeHXvENH/CQDAbDSGRfqP1HZoI2QQve08hdCsbA2VjbBQ7G3IbaCnNBdvQ9y3hkIV6tlvPw9Lobn0v3477UhybZ+fdSaecyHT+7P691eUGYeoPq/4UXczVOy8K/SVn3NdZrw49cNcsXJbciDn9cQDs4EwryaeMxtAyD6vtgFg1Zx38XfPDPyGUJoVC0BATM6TBRAZJogQEBmzS2QFRCOz0kQjIrJAzUDQYAEIiMgCAA=="
+
+Composter:
+Đang xử lý: composter_basic_closed
+Thu hoạch: composter_basic_ready
+
+Collect element:
+class="w-full p-1 text-sm object-contain justify-center items-center hover:brightness-90 cursor-pointer flex disabled:opacity-50 [border-image:var(--button-image)_3_3_4_3_fill] active:[border-image:var(--button-pressed-image)_3_3_4_3_fill] transition-transform active:scale-[0.99] text-xxs sm:text-sm mt-1 whitespace-nowrap"
+style="--button-image: url(https://sunflower-land.com/game-assets/ui/light_button.png); --button-pressed-image: url(https://sunflower-land.com/game-assets/ui/light_button_pressed.png); border-style: solid; border-width: 8px 8px 10px; image-rendering: pixelated; border-image-repeat: stretch; border-radius: 13.125px;"
+
+
+Market:
+Spring: market.webp
+Summer: bettys_market.png
+
+
+stone_small.png
+iron_small.png
+gold_small.png
+
+class="absolute w-full h-full cursor-pointer hover:img-highlight"
+
+src="https://sunflower-land.com/game-assets/resources/stone_small.png" absolute opacity-50
